@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Report {{ report.period }}{% endblock %}
+{% block header %}Report: {{ report.period }}{% endblock %}
+{% block sub %}{{ report.generated_at }} | {{ report.paper_count }} papers{% endblock %}
+
+{% block content %}
+<div class="box">{{ report.content_html | safe }}</div>
+<a href="/" class="btn alt">Back</a>
+{% endblock %}

@@ -1,0 +1,47 @@
+import click
+from app.config import APP_HOST, APP_PORT
+
+
+@click.group()
+def cli():
+    """Auto-Researcher MVP — Ingest, classify, and report on AI research papers."""
+
+
+@cli.command()
+@click.option("--query", default=None, help="arXiv search query (default: category-based)")
+@click.option("--max-results", default=None, type=int, help="Max papers per bucket")
+def ingest(query, max_results):
+    """Fetch papers from arXiv and store in database."""
+    from app.ingestion.pipeline import run_ingestion
+    run_ingestion(query=query, max_results=max_results)
+
+
+@cli.command()
+def classify():
+    """Embed and classify papers into research buckets."""
+    from app.classification.embedder import embed_all_papers
+    from app.classification.classifier import classify_all_papers
+    embed_all_papers()
+    classify_all_papers()
+
+
+@cli.command()
+@click.option("--period", type=click.Choice(["7d", "1m", "3m", "6m", "1y"]), required=True)
+def report(period):
+    """Generate a research report for a time period."""
+    from app.reports.generator import generate_report
+    click.echo(generate_report(period))
+
+
+@cli.command()
+@click.option("--host", default=None)
+@click.option("--port", default=None, type=int)
+def serve(host, port):
+    """Start the local dashboard."""
+    import uvicorn
+    from app.main import create_app
+    uvicorn.run(create_app(), host=host or APP_HOST, port=port or APP_PORT)
+
+
+if __name__ == "__main__":
+    cli()

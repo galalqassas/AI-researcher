@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block header %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="stats">
+    <div class="card"><div class="label">Total Papers</div><div class="value">{{ total_papers }}</div></div>
+    <div class="card"><div class="label">Today</div><div class="value">{{ papers_today }}</div></div>
+</div>
+
+<div class="box">
+    <h2>Ingest Papers</h2>
+    <form action="/ingest" method="post"><button type="submit" class="btn">Run Ingestion</button></form>
+</div>
+
+<div class="box">
+    <h2>Generate Report</h2>
+    <div class="btns">
+        <form action="/reports/generate?period=7d" method="post"><button class="btn">7 Days</button></form>
+        <form action="/reports/generate?period=1m" method="post"><button class="btn">1 Month</button></form>
+        <form action="/reports/generate?period=3m" method="post"><button class="btn">3 Months</button></form>
+        <form action="/reports/generate?period=6m" method="post"><button class="btn">6 Months</button></form>
+        <form action="/reports/generate?period=1y" method="post"><button class="btn">1 Year</button></form>
+    </div>
+</div>
+{% endblock %}
