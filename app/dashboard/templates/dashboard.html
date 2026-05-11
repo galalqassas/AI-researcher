@@ -3,6 +3,10 @@
 {% block header %}Dashboard{% endblock %}
 
 {% block content %}
+{% if error %}
+<div class="flash" style="background:#fecaca;color:#991b1b;padding:.75rem;border-radius:6px;margin-bottom:1rem;">{{ error }}</div>
+{% endif %}
+
 <div class="stats">
     <div class="card"><div class="label">Total Papers</div><div class="value">{{ total_papers }}</div></div>
     <div class="card"><div class="label">Today</div><div class="value">{{ papers_today }}</div></div>
@@ -11,6 +15,7 @@
 <div class="box">
     <h2>Ingest Papers</h2>
     <form action="/ingest" method="post"><button type="submit" class="btn">Run Ingestion</button></form>
+    <p style="margin-top:.5rem;color:#666;font-size:.85rem;">Fetches from arXiv, extracts text, deduplicates</p>
 </div>
 
 <div class="box">
@@ -23,4 +28,13 @@
         <form action="/reports/generate?period=1y" method="post"><button class="btn">1 Year</button></form>
     </div>
 </div>
+
+{% if reports %}
+<div class="box">
+    <h2>Previous Reports</h2>
+    {% for r in reports %}
+    <a class="report-link" href="/reports/{{ r.id }}">{{ r.period }} — {{ r.generated_at.strftime('%Y-%m-%d %H:%M') }} ({{ r.paper_count }} papers)</a>
+    {% endfor %}
+</div>
+{% endif %}
 {% endblock %}

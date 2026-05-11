@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Reports{% endblock %}
+{% block header %}Reports{% endblock %}
+
+{% block content %}
+{% if reports %}
+<div class="box">
+    <h2>All Reports</h2>
+    {% for r in reports %}
+    <a class="report-link" href="/reports/{{ r.id }}">
+        {{ r.period }} &mdash; {{ r.generated_at.strftime('%Y-%m-%d %H:%M') }} ({{ r.paper_count }} papers)
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<div class="box"><p>No reports yet. Generate one from the <a href="/">dashboard</a>.</p></div>
+{% endif %}
+
+<a href="/" class="btn alt">Back to Dashboard</a>
+{% endblock %}
