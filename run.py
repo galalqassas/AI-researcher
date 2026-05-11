@@ -11,9 +11,17 @@ def cli():
 @click.option("--query", default=None, help="arXiv search query (default: category-based)")
 @click.option("--max-results", default=None, type=int, help="Max papers per bucket")
 def ingest(query, max_results):
-    """Fetch papers from arXiv and store in database."""
+    """Fetch papers from arXiv, extract text, and store in database."""
     from app.ingestion.pipeline import run_ingestion
     run_ingestion(query=query, max_results=max_results)
+
+
+@cli.command()
+def dedup():
+    """Remove duplicate papers using fuzzy title matching."""
+    from app.classification.dedup import deduplicate
+    removed = deduplicate()
+    click.echo(f"Removed {removed} duplicates")
 
 
 @cli.command()
@@ -30,7 +38,8 @@ def classify():
 def report(period):
     """Generate a research report for a time period."""
     from app.reports.generator import generate_report
-    click.echo(generate_report(period))
+    result = generate_report(period)
+    click.echo(f"Report generated: {result}")
 
 
 @cli.command()
