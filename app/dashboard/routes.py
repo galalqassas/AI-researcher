@@ -35,8 +35,8 @@ async def trigger_ingestion():
     from app.classification.classifier import classify_all_papers
     run_ingestion()
     deduplicate()
-    embed_all_papers()
-    classify_all_papers()
+    embed_all_papers()    # embeds into both SQLite and Qdrant
+    classify_all_papers()  # uses Qdrant when available
     return RedirectResponse("/", status_code=303)
 
 

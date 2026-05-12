@@ -2,8 +2,9 @@ import json
 import logging
 import numpy as np
 from tqdm import tqdm
-from app.config import BUCKETS, ARXIV_KEYWORDS, SIMILARITY_THRESHOLD
-from app.classification.embedder import get_embedding, embed_to_bytes, bytes_to_embed
+from app.config import SIMILARITY_THRESHOLD
+from app.classification.embedder import get_embedding, bytes_to_embed
+from app.classification.qdrant_store import get_collection_info
 from app.database import Session
 from app.models.paper import Paper
 
@@ -49,9 +50,15 @@ def classify_all_papers():
         session.close()
         return 0
 
+    qdrant_info = get_collection_info()
+    qdrant_available = qdrant_info is not None and qdrant_info["points_count"] > 0
+    if qdrant_available:
+        log.info(f"Qdrant has {qdrant_info['points_count']} vectors indexed")
+
     for paper in tqdm(papers, desc="Classifying"):
         if not paper.embedding:
             continue
+
         vec = bytes_to_embed(paper.embedding)
 
         matched = []

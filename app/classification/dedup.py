@@ -4,6 +4,7 @@ from tqdm import tqdm
 from app.database import Session
 from app.models.paper import Paper
 from app.config import DEDUP_THRESHOLD
+from app.classification.qdrant_store import delete_points
 
 log = logging.getLogger(__name__)
 
@@ -28,12 +29,13 @@ def find_duplicates(session=None) -> list[tuple[int, int, float]]:
 
 def deduplicate(session=None) -> int:
     """Remove duplicate papers, keeping the one with more content (longer full_text).
-    Returns number of papers removed."""
+    Also removes orphan vectors from Qdrant. Returns number of papers removed."""
     if session is None:
         session = Session()
 
     duplicates = find_duplicates(session)
     removed = 0
+    orphan_ids = []
 
     for id1, id2, score in duplicates:
         p1 = session.get(Paper, id1)
@@ -43,8 +45,16 @@ def deduplicate(session=None) -> int:
 
         keep, drop = (p1, p2) if len(p1.full_text or "") >= len(p2.full_text or "") else (p2, p1)
         log.info(f"Duplicate (score={score:.2f}): keeping '{keep.title[:50]}', removing '{drop.title[:50]}'")
+        orphan_ids.append(drop.id)
         session.delete(drop)
         removed += 1
 
     session.commit()
+
+    if orphan_ids:
+        try:
+            delete_points(orphan_ids)
+        except Exception as e:
+            log.warning(f"Failed to delete {len(orphan_ids)} orphan vectors from Qdrant: {e}")
+
     return removed

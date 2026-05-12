@@ -5,6 +5,7 @@ from tqdm import tqdm
 from app.config import OLLAMA_BASE_URL, OLLAMA_EMBED_MODEL
 from app.database import Session
 from app.models.paper import Paper
+from app.classification.qdrant_store import upsert_papers_batch
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +43,12 @@ def bytes_to_embed(data: bytes) -> np.ndarray:
 
 
 def embed_all_papers():
-    """Generate and store embeddings for all papers that don't have one yet."""
+    """Generate and store embeddings for all papers that don't have one yet.
+
+    Embeddings are stored both:
+      - in the SQLite database (LargeBinary column) for backward compatibility
+      - in the Qdrant vector database for similarity search
+    """
     session = Session()
     papers = session.query(Paper).filter(Paper.embedding == None).all()
     log.info(f"Papers to embed: {len(papers)}")
@@ -51,13 +57,33 @@ def embed_all_papers():
         session.close()
         return 0
 
+    batch = []
     for paper in tqdm(papers, desc="Embedding"):
         text = f"{paper.title}. {paper.abstract or ''}"
         vec = get_embedding(text)
         if vec is not None:
+            # Store in SQLite (backward-compatible)
             paper.embedding = embed_to_bytes(vec)
 
+            # Collect for Qdrant batch upsert
+            batch.append({
+                "id": paper.id,
+                "arxiv_id": paper.arxiv_id,
+                "title": paper.title,
+                "embedding": vec,
+            })
+
+    # Commit to SQLite
     session.commit()
     session.close()
+
+    # Batch upsert to Qdrant vector database
+    if batch:
+        try:
+            upsert_papers_batch(batch)
+            log.info(f"Stored {len(batch)} vectors in Qdrant")
+        except Exception as e:
+            log.error(f"Qdrant upsert failed (vectors still in SQLite): {e}")
+
     log.info(f"Embedded {len(papers)} papers")
     return len(papers)
