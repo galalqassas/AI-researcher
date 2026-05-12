@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, date
 from tqdm import tqdm
 from app.config import BUCKETS
 from app.database import Session, init_db
@@ -9,6 +9,18 @@ from app.ingestion.arxiv_client import fetch_papers
 from app.ingestion.pdf_extractor import extract_paper_text
 
 log = logging.getLogger(__name__)
+
+
+def parse_published_date(value) -> date | None:
+    """Parse a date string (YYYY-MM-DD) into a date object."""
+    if not value:
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return datetime.strptime(str(value), "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        return None
 
 
 def run_ingestion(query=None, max_results=None):
@@ -40,7 +52,7 @@ def run_ingestion(query=None, max_results=None):
             abstract=p.get("abstract", ""),
             full_text=full_text or "",
             pdf_url=p.get("pdf_url", ""),
-            published_date=p.get("published_date"),
+            published_date=parse_published_date(p.get("published_date")),
             ingested_at=datetime.utcnow(),
             buckets=json.dumps(p.get("buckets", [])),
         )
