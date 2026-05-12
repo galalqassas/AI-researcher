@@ -31,8 +31,12 @@ async def dashboard(request: Request):
 async def trigger_ingestion():
     from app.ingestion.pipeline import run_ingestion
     from app.classification.dedup import deduplicate
+    from app.classification.embedder import embed_all_papers
+    from app.classification.classifier import classify_all_papers
     run_ingestion()
     deduplicate()
+    embed_all_papers()
+    classify_all_papers()
     return RedirectResponse("/", status_code=303)
 
 

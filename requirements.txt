@@ -14,7 +14,6 @@ sqlalchemy==2.0.41
 alembic==1.15.2
 
 numpy==2.2.6
-scikit-learn==1.6.1
 
 langchain==0.3.25
 langchain-ollama==0.3.3
