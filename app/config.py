@@ -44,7 +44,7 @@ ARXIV_KEYWORDS = {
 }
 
 SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.35"))
-DEDUP_THRESHOLD = float(os.getenv("DEDUP_SIMILARITY_THRESHOLD", "0.85"))
+DEDUP_THRESHOLD = float(os.getenv("DEDUP_THRESHOLD", "0.85"))
 APP_HOST = os.getenv("APP_HOST", "127.0.0.1")
 APP_PORT = int(os.getenv("APP_PORT", "8000"))
 REPORT_PERIODS = ["7d", "6m", "1y"]

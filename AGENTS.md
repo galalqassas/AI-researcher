@@ -108,7 +108,7 @@ All commands run via `python run.py`:
 | `ARXIV_FROM_DATE` | `2020-01-01` | Only fetch papers published on or after this date (client-side filter) |
 | `ARXIV_MAX_RESULTS` | `2` | Max papers per bucket |
 | `SIMILARITY_THRESHOLD` | `0.35` | Min cosine similarity for bucket assignment |
-| `DEDUP_THRESHOLD` | `0.85` | Min fuzzy score to consider duplicate. **⚠ Note:** `.env` and `.env.example` name this `DEDUP_SIMILARITY_THRESHOLD`, but the code reads `DEDUP_THRESHOLD`. The `.env` value is currently ignored; the default `0.85` is always used. |
+| `DEDUP_THRESHOLD` | `0.85` | Min fuzzy score to consider duplicate |
 | `QDRANT_HOST` | `localhost` | Qdrant server host |
 | `QDRANT_PORT` | `6333` | Qdrant REST API port |
 | `QDRANT_GRPC_PORT` | `6334` | Qdrant gRPC API port |
@@ -149,10 +149,6 @@ All commands run via `python run.py`:
 
 | Issue | Severity | Description |
 |---|---|---|
-| `.env` variable name mismatch | Medium | `.env` defines `DEDUP_SIMILARITY_THRESHOLD` but `config.py` reads `DEDUP_THRESHOLD`. The `.env` value is silently ignored; default `0.85` is always used. |
-| `run_ingestion` returns `None` | Low | When no papers are fetched, `pipeline.py` returns bare `return` (yields `None` instead of `0`). `run.py` prints `"Ingestion complete: None new papers stored"`. |
-| `Report.generated_at` type annotation | Low | Annotated as `Mapped[str]` but column is `DateTime`. Should be `Mapped[datetime]`. |
-| `datetime.utcnow()` deprecated | Low | Used in `pipeline.py`, `generator.py`, `routes.py`. Should use `datetime.now(timezone.utc)` for Python 3.12+. |
 | O(n²) deduplication | Medium | `dedup.py` compares every pair of papers. Will be slow for large databases. |
 | Dashboard routes block synchronously | Medium | `POST /ingest` and `POST /reports/generate` block the server for the full pipeline duration with no user feedback. |
 | Unused dependencies | Low | `feedparser` and `dateparser` are in `requirements.txt` but never imported. |
