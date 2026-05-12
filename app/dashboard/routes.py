@@ -23,7 +23,7 @@ async def dashboard(request: Request):
         "total_papers": total,
         "papers_today": today_count,
         "reports": reports,
-        "periods": ["7d", "1m", "3m", "6m", "1y"],
+        "periods": ["7d", "6m", "1y"],
     })
 
 

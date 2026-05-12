@@ -13,8 +13,6 @@ log = logging.getLogger(__name__)
 
 PERIOD_DAYS = {
     "7d": 7,
-    "1m": 30,
-    "3m": 90,
     "6m": 180,
     "1y": 365,
 }

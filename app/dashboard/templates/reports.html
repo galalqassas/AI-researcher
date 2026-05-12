@@ -1,20 +1,35 @@
 {% extends "base.html" %}
 {% block title %}Reports{% endblock %}
 {% block header %}Reports{% endblock %}
+{% block sub %}All generated research summaries{% endblock %}
 
 {% block content %}
 {% if reports %}
-<div class="box">
-    <h2>All Reports</h2>
-    {% for r in reports %}
-    <a class="report-link" href="/reports/{{ r.id }}">
-        {{ r.period }} &mdash; {{ r.generated_at.strftime('%Y-%m-%d %H:%M') }} ({{ r.paper_count }} papers)
-    </a>
-    {% endfor %}
+<div class="section">
+    <div class="report-list">
+        {% for r in reports %}
+        <a class="report-item" href="/reports/{{ r.id }}">
+            <div class="ri-left">
+                <div class="ri-icon">&#128196;</div>
+                <div>
+                    <div class="ri-title">{{ r.period }} Report</div>
+                    <div class="ri-meta">{{ r.generated_at.strftime('%b %d, %Y at %H:%M') }} &middot; {{ r.paper_count }} papers</div>
+                </div>
+            </div>
+            <div class="ri-arrow">&rarr;</div>
+        </a>
+        {% endfor %}
+    </div>
 </div>
 {% else %}
-<div class="box"><p>No reports yet. Generate one from the <a href="/">dashboard</a>.</p></div>
+<div class="section">
+    <div class="empty-state">
+        <div class="empty-icon">&#128203;</div>
+        <div class="empty-title">No reports yet</div>
+        <div class="empty-desc">Generate one from the <a href="/">dashboard</a>.</div>
+    </div>
+</div>
 {% endif %}
 
-<a href="/" class="btn alt">Back to Dashboard</a>
+<a href="/" class="btn btn-secondary">&larr; Back to Dashboard</a>
 {% endblock %}
