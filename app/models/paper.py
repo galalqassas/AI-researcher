@@ -29,7 +29,7 @@ class Report(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     period: Mapped[str] = mapped_column(String(10), nullable=False)
-    generated_at: Mapped[str] = mapped_column(DateTime, nullable=False)
+    generated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     content_html: Mapped[str] = mapped_column(Text, nullable=False)
     paper_count: Mapped[int] = mapped_column(Integer, nullable=False)
 

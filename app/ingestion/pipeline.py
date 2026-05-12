@@ -32,7 +32,7 @@ def run_ingestion(query=None, max_results=None):
 
     if not papers:
         log.warning("No papers fetched from arXiv")
-        return
+        return 0
 
     session = Session()
     added = 0
