@@ -1,5 +1,6 @@
 import logging
 from rapidfuzz import fuzz
+from tqdm import tqdm
 from app.database import Session
 from app.models.paper import Paper
 from app.config import DEDUP_THRESHOLD
@@ -16,7 +17,7 @@ def find_duplicates(session=None) -> list[tuple[int, int, float]]:
     papers = session.query(Paper).all()
     duplicates = []
 
-    for i in range(len(papers)):
+    for i in tqdm(range(len(papers)), desc="Finding duplicates"):
         for j in range(i + 1, len(papers)):
             score = fuzz.ratio(papers[i].title.lower(), papers[j].title.lower()) / 100.0
             if score >= DEDUP_THRESHOLD:

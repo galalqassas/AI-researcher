@@ -49,7 +49,7 @@ def embed_all_papers():
 
     if not papers:
         session.close()
-        return
+        return 0
 
     for paper in tqdm(papers, desc="Embedding"):
         text = f"{paper.title}. {paper.abstract or ''}"
@@ -60,3 +60,4 @@ def embed_all_papers():
     session.commit()
     session.close()
     log.info(f"Embedded {len(papers)} papers")
+    return len(papers)

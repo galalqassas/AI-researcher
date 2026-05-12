@@ -1,6 +1,7 @@
 import json
 import logging
 import numpy as np
+from tqdm import tqdm
 from app.config import BUCKETS, ARXIV_KEYWORDS, SIMILARITY_THRESHOLD
 from app.classification.embedder import get_embedding, embed_to_bytes, bytes_to_embed
 from app.database import Session
@@ -46,9 +47,9 @@ def classify_all_papers():
     if not bucket_embeds:
         log.error("No bucket embeddings available — is Ollama running?")
         session.close()
-        return
+        return 0
 
-    for paper in papers:
+    for paper in tqdm(papers, desc="Classifying"):
         if not paper.embedding:
             continue
         vec = bytes_to_embed(paper.embedding)
@@ -69,3 +70,4 @@ def classify_all_papers():
     session.commit()
     session.close()
     log.info("Classification complete")
+    return len(papers)

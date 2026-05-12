@@ -1,6 +1,7 @@
 import json
 import logging
 from datetime import datetime, timedelta
+from tqdm import tqdm
 from langchain_ollama import OllamaLLM
 from langchain_core.prompts import PromptTemplate
 from app.config import OLLAMA_MODEL, REPORT_PERIODS
@@ -121,7 +122,7 @@ def generate_report(period: str) -> dict:
             papers_by_bucket.setdefault(b, []).append(p)
 
     summaries = {}
-    for bucket in ["general_ai", "autonomous_agents", "ai_finance"]:
+    for bucket in tqdm(["general_ai", "autonomous_agents", "ai_finance"], desc="Summarizing buckets"):
         bp = papers_by_bucket.get(bucket, [])
         log.info(f"Summarizing bucket '{bucket}' ({len(bp)} papers)...")
         summaries[bucket] = summarize_bucket(bucket, bp)
