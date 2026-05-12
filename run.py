@@ -1,5 +1,8 @@
+import logging
 import click
 from app.config import APP_HOST, APP_PORT
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
 
 
 @click.group()
@@ -13,7 +16,8 @@ def cli():
 def ingest(query, max_results):
     """Fetch papers from arXiv, extract text, and store in database."""
     from app.ingestion.pipeline import run_ingestion
-    run_ingestion(query=query, max_results=max_results)
+    added = run_ingestion(query=query, max_results=max_results)
+    click.echo(f"Ingestion complete: {added} new papers stored")
 
 
 @cli.command()
@@ -29,8 +33,10 @@ def classify():
     """Embed and classify papers into research buckets."""
     from app.classification.embedder import embed_all_papers
     from app.classification.classifier import classify_all_papers
-    embed_all_papers()
-    classify_all_papers()
+    embedded = embed_all_papers()
+    click.echo(f"Embedded {embedded} papers")
+    classified = classify_all_papers()
+    click.echo(f"Classified {classified} papers")
 
 
 @cli.command()
