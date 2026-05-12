@@ -20,25 +20,20 @@ ARXIV_MAX_RESULTS = int(os.getenv("ARXIV_MAX_RESULTS", "50"))
 BUCKETS = ["general_ai", "autonomous_agents", "ai_finance"]
 
 ARXIV_CATEGORIES = {
-    "general_ai": ["cs.AI", "cs.LG", "cs.CL", "cs.CV", "cs.NE"],
-    "autonomous_agents": ["cs.AI", "cs.MA", "cs.RO"],
-    "ai_finance": ["q-fin.CP", "q-fin.PM", "q-fin.ST", "q-fin.GN"],
+    "general_ai": ["cs.AI", "cs.LG"],
+    "autonomous_agents": ["cs.MA", "cs.AI"],
+    "ai_finance": ["q-fin.ST", "q-fin.CP", "q-fin.GN"],
 }
 
 ARXIV_KEYWORDS = {
     "general_ai": [
-        "artificial intelligence", "machine learning", "deep learning",
-        "neural network", "NLP", "computer vision", "transformer",
-        "LLM", "foundation model",
+        "large language models", "neural networks",
     ],
     "autonomous_agents": [
-        "autonomous agent", "multi-agent", "agent planning",
-        "tool use", "reasoning agent", "language agent", "agentic",
+        "autonomous agents", "multi-agent systems", "agentic workflow",
     ],
     "ai_finance": [
-        "AI finance", "machine learning trading", "financial forecasting",
-        "fintech", "risk management", "portfolio optimization",
-        "algorithmic trading", "deep learning finance",
+        "machine learning", "AI", "algorithmic trading",
     ],
 }
 

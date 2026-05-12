@@ -7,7 +7,6 @@ from app.config import (
     ARXIV_CATEGORIES, ARXIV_KEYWORDS, BUCKETS,
     ARXIV_FROM_DATE, ARXIV_MAX_RESULTS,
 )
-
 log = logging.getLogger(__name__)
 
 client = arxiv.Client(
@@ -18,20 +17,16 @@ client = arxiv.Client(
 
 
 def build_query(bucket: str, extra_query: str = None) -> str:
-    """Build an arXiv API query string for a bucket using categories + date filter."""
+    """Build an arXiv API query string for a bucket using categories + keywords + date filter."""
     cats = ARXIV_CATEGORIES[bucket]
     cat_part = " OR ".join(f"cat:{c}" for c in cats)
+    kws = ARXIV_KEYWORDS[bucket]
+    kw_part = " OR ".join(f'"{kw}"' for kw in kws)
     date_part = f"submittedDate:[{ARXIV_FROM_DATE.replace('-', '')} TO 99999999]"
-    parts = [f"({cat_part})", date_part]
+    parts = [f"({cat_part})", f"({kw_part})", date_part]
     if extra_query:
         parts.append(f"({extra_query})")
     return " AND ".join(parts)
-
-
-def matches_keywords(text: str, bucket: str) -> bool:
-    """Check if text contains any keyword for the given bucket (case-insensitive)."""
-    text_lower = text.lower()
-    return any(kw.lower() in text_lower for kw in ARXIV_KEYWORDS[bucket])
 
 
 def fetch_papers(bucket: str = None, max_results: int = None, query: str = None):
@@ -61,13 +56,8 @@ def fetch_papers(bucket: str = None, max_results: int = None, query: str = None)
 
                 title = result.title.replace("\n", " ").strip()
                 abstract = result.summary.replace("\n", " ").strip()
-                text = f"{title} {abstract}"
 
                 matched_buckets = [b]
-                if matches_keywords(text, b):
-                    for other_b in BUCKETS:
-                        if other_b != b and matches_keywords(text, other_b):
-                            matched_buckets.append(other_b)
 
                 pdf_url = ""
                 for link in result.links:
