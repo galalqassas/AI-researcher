@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from tqdm import tqdm
 from app.config import BUCKETS
 from app.database import Session, init_db
@@ -53,7 +53,7 @@ def run_ingestion(query=None, max_results=None):
             full_text=full_text or "",
             pdf_url=p.get("pdf_url", ""),
             published_date=parse_published_date(p.get("published_date")),
-            ingested_at=datetime.utcnow(),
+            ingested_at=datetime.now(timezone.utc),
             buckets=json.dumps(p.get("buckets", [])),
         )
         session.add(paper)

@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from tqdm import tqdm
 from langchain_ollama import OllamaLLM
 from langchain_core.prompts import PromptTemplate
@@ -23,7 +23,7 @@ llm = OllamaLLM(model=OLLAMA_MODEL)
 def get_papers_for_period(period: str, session):
     """Query papers published within the given period."""
     days = PERIOD_DAYS.get(period, 30)
-    cutoff = datetime.utcnow() - timedelta(days=days)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
     return session.query(Paper).filter(Paper.ingested_at >= cutoff).all()
 
 
@@ -132,7 +132,7 @@ def generate_report(period: str) -> dict:
 
     report = Report(
         period=period,
-        generated_at=datetime.utcnow(),
+        generated_at=datetime.now(timezone.utc),
         content_html=content_html,
         paper_count=len(papers),
     )

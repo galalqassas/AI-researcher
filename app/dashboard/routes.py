@@ -2,7 +2,7 @@ import json
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from datetime import datetime
+from datetime import datetime, timezone
 from app.database import Session
 from app.models.paper import Paper, Report
 
@@ -14,7 +14,7 @@ templates = Jinja2Templates(directory="app/dashboard/templates")
 async def dashboard(request: Request):
     db = Session()
     total = db.query(Paper).count()
-    today_start = datetime.combine(datetime.utcnow().date(), datetime.min.time())
+    today_start = datetime.combine(datetime.now(timezone.utc).date(), datetime.min.time())
     today_count = db.query(Paper).filter(Paper.ingested_at >= today_start).count()
     reports = db.query(Report).order_by(Report.generated_at.desc()).all()
     db.close()
