@@ -15,7 +15,13 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4:31b-cloud")
 OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text-v2-moe")
 
 ARXIV_FROM_DATE = os.getenv("ARXIV_FROM_DATE", "2020-01-01")
-ARXIV_MAX_RESULTS = int(os.getenv("ARXIV_MAX_RESULTS", "50"))
+ARXIV_MAX_RESULTS = int(os.getenv("ARXIV_MAX_RESULTS", "2"))
+
+# Qdrant Vector Database
+QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
+QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
+QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "papers")
+QDRANT_EMBED_DIMENSION = int(os.getenv("QDRANT_EMBED_DIMENSION", "768"))
 
 BUCKETS = ["general_ai", "autonomous_agents", "ai_finance"]
 
