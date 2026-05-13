@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from tqdm import tqdm
@@ -73,22 +74,31 @@ def _persist_cache():
     _cache_path.write_text(json.dumps(_llm_cache, ensure_ascii=False))
 
 
-def _cached_invoke(llm_instance, prompt_text: str) -> str:
-    """Call LLM with cache: return cached response if available, else call and store."""
+def _cached_invoke(llm_instance, prompt_text: str, max_retries: int = 3) -> str:
+    """Call LLM with cache: return cached response if available, else call and store. Retries on failure."""
     global _tokens_used
     key = hashlib.sha256(f"{llm_instance.model}:{prompt_text}".encode()).hexdigest()
     cache = _ensure_cache()
     if key in cache:
         log.info("LLM cache hit")
         return cache[key]
-    result = llm_instance.invoke(prompt_text).strip()
-    _tokens_used += len(prompt_text.split()) + len(result.split())
-    if OLLAMA_MAX_TOKENS_PER_RUN > 0 and _tokens_used > OLLAMA_MAX_TOKENS_PER_RUN:
-        _persist_cache()
-        raise RuntimeError(f"Token cap exceeded: {_tokens_used} > {OLLAMA_MAX_TOKENS_PER_RUN}")
-    cache[key] = result
-    _persist_cache()
-    return result
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            result = llm_instance.invoke(prompt_text).strip()
+            _tokens_used += len(prompt_text.split()) + len(result.split())
+            if OLLAMA_MAX_TOKENS_PER_RUN > 0 and _tokens_used > OLLAMA_MAX_TOKENS_PER_RUN:
+                _persist_cache()
+                raise RuntimeError(f"Token cap exceeded: {_tokens_used} > {OLLAMA_MAX_TOKENS_PER_RUN}")
+            cache[key] = result
+            _persist_cache()
+            return result
+        except Exception as e:
+            if attempt == max_retries:
+                log.error(f"LLM invoke failed after {max_retries} attempts: {e}")
+                raise
+            log.warning(f"LLM invoke failed (attempt {attempt}/{max_retries}): {e}. Retrying in 2s...")
+            time.sleep(2)
 
 
 def get_papers_for_period(period: str, session):
