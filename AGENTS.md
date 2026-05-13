@@ -85,10 +85,12 @@ All commands run via `python run.py`:
 | Command | Description |
 |---|---|
 | `python run.py ingest --max-results 2` | Fetch papers from arXiv, extract text, store in DB |
-| `python run.py ingest --query "cat:cs.AI"` | Fetch with extra query filter (combined with bucket filters via AND) |
+| `python run.py ingest --bucket general_ai` | Fetch papers from a single bucket only |
+| `python run.py ingest --query "cat:cs.AI"` | Fetch with extra query filter |
 | `python run.py dedup` | Remove duplicate papers via fuzzy title matching + clean Qdrant orphans |
 | `python run.py classify` | Embed and classify papers into buckets (requires Ollama + Qdrant) |
 | `python run.py report --period 7d` | Generate report (periods: 7d, 6m, 1y) |
+| `python run.py pipeline --period 7d` | Run full pipeline: ingest → dedup → embed → classify → report |
 | `python run.py serve [--host] [--port]` | Start dashboard server (default: 127.0.0.1:8000) |
 
 **Note:** The `--query` flag does NOT replace bucket filters — it adds an additional AND clause. The full query becomes `bucket_categories AND bucket_keywords AND user_query`.
@@ -113,7 +115,13 @@ All commands run via `python run.py`:
 | `ARXIV_MAX_RESULTS` | `2` | Max papers per bucket |
 | `SIMILARITY_THRESHOLD` | `0.35` | Min cosine similarity for bucket assignment |
 | `RRF_K` | `60` | Reciprocal Rank Fusion constant for hybrid classification |
-| `DEDUP_THRESHOLD` | `0.85` | Min fuzzy score to consider duplicate |
+| `RERANK_MARGIN` | `0.05` | Margin below SIMILARITY_THRESHOLD for borderline paper reranking |
+| `RERANK_WEIGHT_COSINE` | `0.6` | Weight for cosine score in reranking blend |
+| `RERANK_WEIGHT_BM25` | `0.4` | Weight for BM25 rank score in reranking blend |
+| `RERANK_MARGIN` | `0.05` | Margin below similarity threshold for borderline re-scoring |
+| `RERANK_WEIGHT_COSINE` | `0.6` | Weight for cosine score in rerank blend |
+| `RERANK_WEIGHT_BM25` | `0.4` | Weight for BM25 RRF score in rerank blend |
+| `WEBHOOK_URL` | _(empty)_ | Webhook URL for pipeline alerts (Slack-compatible). Empty = disabled |
 | `QDRANT_HOST` | `localhost` | Qdrant server host |
 | `QDRANT_PORT` | `6333` | Qdrant REST API port |
 | `QDRANT_GRPC_PORT` | `6334` | Qdrant gRPC API port |
@@ -121,11 +129,13 @@ All commands run via `python run.py`:
 | `QDRANT_EMBED_DIMENSION` | `768` | Embedding vector dimension (must match `OLLAMA_EMBED_MODEL`) |
 | `APP_HOST` | `127.0.0.1` | Dashboard host |
 | `APP_PORT` | `8000` | Dashboard port |
+| `WEBHOOK_URL` | `` | Webhook URL for pipeline alerts (Slack-compatible). Empty = disabled |
 
 ## Database Models
 
 - **Paper** (`papers` table): id, arxiv_id (unique), title, authors (nullable), abstract (nullable), full_text (nullable), pdf_url (nullable), published_date (nullable Date), ingested_at (nullable DateTime), buckets (nullable JSON string), embedding (nullable LargeBinary — also synced to Qdrant)
 - **Report** (`reports` table): id, period (String 10), generated_at (DateTime), content_html (Text), paper_count (Integer)
+- **PipelineRun** (`pipeline_runs` table): id, name (String 50), started_at (DateTime), finished_at (DateTime nullable), duration_s (Float nullable), status (String 20 — success/error/running), stages_json (Text nullable), error (Text nullable), paper_count (Integer nullable)
 - **papers_fts** (FTS5 virtual table): rowid (= paper id), title, abstract — used for BM25 keyword search in hybrid classification. Created automatically by `init_db()`, populated on ingestion, and can be rebuilt via `rebuild_fts()`
 
 ## Qdrant Vector Database
@@ -224,3 +234,33 @@ The arXiv API returns **HTTP 500** when combining `submittedDate` range filters 
 - Date filtering is done client-side after fetching
 - The client over-fetches (3× `max_results`) to compensate for papers filtered out by date
 - `page_size=50`, `delay_seconds=5.0`, `num_retries=5` to avoid rate limiting (HTTP 429)
+## New Features
+
+### Hybrid Search API
+
+`GET /search?q=machine+learning&limit=10` — Embeds the query via `nomic-embed-text-v2-moe`, searches Qdrant for dense vector matches, searches FTS5 for BM25 keyword matches, merges via Reciprocal Rank Fusion (RRF), and returns ranked results.
+
+### Pipeline Metrics & Alerts
+
+All pipeline runs (ingest, report, full pipeline) are tracked in the `pipeline_runs` SQLite table with:
+- **name** — pipeline name (ingest, report, full_pipeline)
+- **started_at** / **finished_at** — timestamps
+- **duration_s** — wall-clock duration in seconds
+- **status** — success or error
+- **stages_json** — per-stage details (ingested count, embedded count, etc.)
+- **error** — error message if failed
+- **paper_count** — number of papers processed
+
+`GET /pipeline-runs` — JSON API to list recent pipeline runs.
+
+Webhook alerts: Set `WEBHOOK_URL` in `.env` to a Slack incoming webhook URL (or any HTTP endpoint). Pipeline status is POSTed as JSON after each run.
+
+### Reranking (Borderline Papers)
+
+Papers within `RERANK_MARGIN` (default 0.05) below the similarity threshold get a second look. Their final score is computed as `0.6 * cosine_score + 0.4 * RRF_score`. If this blended score exceeds 80% of the threshold, the paper is assigned to that bucket. This improves classification of borderline papers that have weak cosine similarity but strong keyword matches.
+
+### Batch Ingest
+
+`python run.py ingest --bucket general_ai` — Ingest from a single bucket only. Useful for targeted updates without fetching all three buckets.
+
+`python run.py pipeline --period 7d` — Run the complete pipeline (ingest → dedup → embed → classify → report) with metrics tracking. Equivalent to `POST /ingest` + `POST /reports/generate` via CLI.

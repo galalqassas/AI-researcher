@@ -49,10 +49,14 @@ ARXIV_KEYWORDS = {
 
 SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.35"))
 RRF_K = int(os.getenv("RRF_K", "60"))
+RERANK_MARGIN = float(os.getenv("RERANK_MARGIN", "0.05"))
+RERANK_WEIGHT_COSINE = float(os.getenv("RERANK_WEIGHT_COSINE", "0.6"))
+RERANK_WEIGHT_BM25 = float(os.getenv("RERANK_WEIGHT_BM25", "0.4"))
 DEDUP_THRESHOLD = float(os.getenv("DEDUP_THRESHOLD", "0.85"))
 APP_HOST = os.getenv("APP_HOST", "127.0.0.1")
 APP_PORT = int(os.getenv("APP_PORT", "8000"))
 REPORT_PERIODS = ["7d", "6m", "1y"]
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
 
 for d in [DATA_DIR, PDFS_DIR, REPORTS_DIR]:
     d.mkdir(parents=True, exist_ok=True)

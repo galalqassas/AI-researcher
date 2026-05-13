@@ -24,12 +24,13 @@ def parse_published_date(value) -> date | None:
         return None
 
 
-def run_ingestion(query=None, max_results=None):
-    """Full ingestion pipeline: fetch from arXiv → extract full text → store in DB."""
+def run_ingestion(query=None, max_results=None, bucket=None):
+    """Full ingestion pipeline: fetch from arXiv → extract full text → store in DB.
+    If bucket is specified, only fetch that bucket."""
     init_db()
 
     log.info("Starting ingestion pipeline...")
-    papers = fetch_papers(max_results=max_results, query=query)
+    papers = fetch_papers(max_results=max_results, query=query, bucket=bucket)
 
     if not papers:
         log.warning("No papers fetched from arXiv")

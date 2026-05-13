@@ -1,6 +1,6 @@
 import logging
 import click
-from app.config import APP_HOST, APP_PORT
+from app.config import APP_HOST, APP_PORT, BUCKETS
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
 
@@ -13,10 +13,11 @@ def cli():
 @cli.command()
 @click.option("--query", default=None, help="arXiv search query (default: category-based)")
 @click.option("--max-results", default=None, type=int, help="Max papers per bucket")
-def ingest(query, max_results):
+@click.option("--bucket", default=None, type=click.Choice(BUCKETS), help="Only ingest this bucket")
+def ingest(query, max_results, bucket):
     """Fetch papers from arXiv, extract text, and store in database."""
     from app.ingestion.pipeline import run_ingestion
-    added = run_ingestion(query=query, max_results=max_results)
+    added = run_ingestion(query=query, max_results=max_results, bucket=bucket)
     click.echo(f"Ingestion complete: {added} new papers stored")
 
 
@@ -46,6 +47,51 @@ def report(period):
     from app.reports.generator import generate_report
     result = generate_report(period)
     click.echo(f"Report generated: {result}")
+
+
+@cli.command(name="pipeline")
+@click.option("--max-results", default=None, type=int, help="Max papers per bucket")
+@click.option("--period", default="7d", type=click.Choice(["7d", "6m", "1y"]), help="Report period")
+def run_pipeline(max_results, period):
+    """Run the full pipeline: ingest → dedup → embed → classify → report."""
+    from app.ingestion.pipeline import run_ingestion
+    from app.classification.dedup import deduplicate
+    from app.classification.embedder import embed_all_papers
+    from app.classification.classifier import classify_all_papers
+    from app.reports.generator import generate_report
+    from app.metrics import track_pipeline
+
+    with track_pipeline("full_pipeline") as ctx:
+        click.echo("=== Step 1: Ingest ===")
+        added = run_ingestion(max_results=max_results)
+        click.echo(f"  Ingested: {added} new papers")
+
+        click.echo("=== Step 2: Dedup ===")
+        removed = deduplicate()
+        click.echo(f"  Removed: {removed} duplicates")
+
+        click.echo("=== Step 3: Embed ===")
+        embedded = embed_all_papers()
+        click.echo(f"  Embedded: {embedded} papers")
+
+        click.echo("=== Step 4: Classify ===")
+        classified = classify_all_papers()
+        click.echo(f"  Classified: {classified} papers")
+
+        click.echo("=== Step 5: Report ===")
+        result = generate_report(period)
+        click.echo(f"  Report: {result}")
+
+        ctx["paper_count"] = added
+        ctx["stages_json"] = {
+            "ingested": added,
+            "deduplicated": removed,
+            "embedded": embedded,
+            "classified": classified,
+            "report": result,
+        }
+
+    click.echo("Pipeline complete!")
 
 
 @cli.command()
