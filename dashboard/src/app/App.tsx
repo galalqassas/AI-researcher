@@ -246,10 +246,10 @@ export default function App() {
               <Search size={13} className="text-[#94A3B8]" />
               <span className="text-[#94A3B8] text-xs">Search</span>
             </button>
-            <button className="relative w-8 h-8 rounded-xl border border-[#E2E8F0] flex items-center justify-center hover:bg-[#F8FAFC] transition-colors">
+            <button className="hidden relative w-8 h-8 rounded-xl border border-[#E2E8F0] flex items-center justify-center hover:bg-[#F8FAFC] transition-colors">
               <Bell size={14} className="text-[#64748B]" />
             </button>
-            <button className="w-8 h-8 rounded-xl border border-[#E2E8F0] flex items-center justify-center hover:bg-[#F8FAFC] transition-colors">
+            <button className="hidden w-8 h-8 rounded-xl border border-[#E2E8F0] flex items-center justify-center hover:bg-[#F8FAFC] transition-colors">
               <Settings size={14} className="text-[#64748B]" />
             </button>
           </div>
