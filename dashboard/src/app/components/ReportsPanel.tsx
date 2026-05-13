@@ -197,7 +197,67 @@ function ReportModal({ report, onClose }: { report: Report; onClose: () => void 
 
   function handleExport() {
     if (!report.content_html) return;
-    const blob = new Blob([`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${periodLabel} Report</title></head><body style="font-family:system-ui,sans-serif;max-width:780px;margin:40px auto;padding:0 20px">${report.content_html}</body></html>`], { type: 'text/html' });
+
+    const transformedBody = transformReportHtml(report.content_html);
+
+    const exportCSS = `
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+      *, *::before, *::after { box-sizing: border-box; }
+
+      body {
+        font-family: 'Inter', system-ui, sans-serif;
+        background: #F8FAFC;
+        color: #0F172A;
+        margin: 0;
+        padding: 40px 20px 60px;
+      }
+
+      .export-wrapper {
+        max-width: 760px;
+        margin: 0 auto;
+      }
+
+      .export-header {
+        margin-bottom: 28px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid #E2E8F0;
+      }
+      .export-header h1 {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #0F172A;
+        margin: 0 0 4px;
+      }
+      .export-header p {
+        font-size: 0.8rem;
+        color: #94A3B8;
+        margin: 0;
+      }
+
+      ${REPORT_CSS}
+    `;
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${periodLabel} Report · Auto-Researcher</title>
+  <style>${exportCSS}</style>
+</head>
+<body>
+  <div class="export-wrapper">
+    <div class="export-header">
+      <h1>${periodLabel} Report</h1>
+      <p>Auto-Researcher · ${report.paper_count} papers · Generated ${new Date(report.generated_at).toLocaleString()}</p>
+    </div>
+    <div class="report-body">${transformedBody}</div>
+  </div>
+</body>
+</html>`;
+
+    const blob = new Blob([html], { type: 'text/html' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = `report-${report.period}-${report.id}.html`;
