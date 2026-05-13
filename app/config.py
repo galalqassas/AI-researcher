@@ -10,13 +10,15 @@ PDFS_DIR = DATA_DIR / "pdfs"
 REPORTS_DIR = DATA_DIR / "reports"
 DB_PATH = DATA_DIR / "auto_researcher.db"
 
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "https://ollama.com")
+OLLAMA_API_KEY = os.getenv("OLLAMA_API_KEY", "")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4:31b-cloud")
 # OLLAMA_MODEL_LIGHT: defaults to OLLAMA_MODEL (same model). Set to a smaller model
 # (e.g. gemma3:4b) for cost savings on per-paper summaries. Requires `ollama pull`.
 OLLAMA_MODEL_LIGHT = os.getenv("OLLAMA_MODEL_LIGHT", OLLAMA_MODEL)
 OLLAMA_MAX_TOKENS_PER_RUN = int(os.getenv("OLLAMA_MAX_TOKENS_PER_RUN", "0"))
 OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text-v2-moe")
+OLLAMA_EMBED_BASE_URL = os.getenv("OLLAMA_EMBED_BASE_URL", "http://localhost:11434")
 
 ARXIV_FROM_DATE = os.getenv("ARXIV_FROM_DATE", "2020-01-01")
 ARXIV_MAX_RESULTS = int(os.getenv("ARXIV_MAX_RESULTS", "2"))

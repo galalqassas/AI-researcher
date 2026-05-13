@@ -7,7 +7,7 @@ from pathlib import Path
 from tqdm import tqdm
 from langchain_ollama import OllamaLLM
 from langchain_core.prompts import PromptTemplate
-from app.config import OLLAMA_MODEL, OLLAMA_MODEL_LIGHT, OLLAMA_MAX_TOKENS_PER_RUN, REPORT_PERIODS
+from app.config import OLLAMA_BASE_URL, OLLAMA_API_KEY, OLLAMA_MODEL, OLLAMA_MODEL_LIGHT, OLLAMA_MAX_TOKENS_PER_RUN, REPORT_PERIODS
 from app.database import Session
 from app.models.paper import Paper, Report
 from app.reports.prompts import BUCKET_SUMMARY, CROSS_BUCKET_SYNTHESIS, PER_PAPER_SUMMARY
@@ -22,6 +22,9 @@ PERIOD_DAYS = {
     "1y": 365,
 }
 
+# Build auth headers for Ollama Cloud API (if API key is configured)
+_ollama_headers = {"Authorization": f"Bearer {OLLAMA_API_KEY}"} if OLLAMA_API_KEY else {}
+
 # --- Tiered model routing: lazy initialization to avoid import-time failures ---
 _llm_light: OllamaLLM | None = None
 _llm_heavy: OllamaLLM | None = None
@@ -30,16 +33,24 @@ _llm_heavy: OllamaLLM | None = None
 def _get_llm_light() -> OllamaLLM:
     global _llm_light
     if _llm_light is None:
-        log.info(f"Initializing light LLM: {OLLAMA_MODEL_LIGHT}")
-        _llm_light = OllamaLLM(model=OLLAMA_MODEL_LIGHT)
+        log.info(f"Initializing light LLM: {OLLAMA_MODEL_LIGHT} @ {OLLAMA_BASE_URL}")
+        _llm_light = OllamaLLM(
+            model=OLLAMA_MODEL_LIGHT,
+            base_url=OLLAMA_BASE_URL,
+            client_kwargs={"headers": _ollama_headers},
+        )
     return _llm_light
 
 
 def _get_llm_heavy() -> OllamaLLM:
     global _llm_heavy
     if _llm_heavy is None:
-        log.info(f"Initializing heavy LLM: {OLLAMA_MODEL}")
-        _llm_heavy = OllamaLLM(model=OLLAMA_MODEL)
+        log.info(f"Initializing heavy LLM: {OLLAMA_MODEL} @ {OLLAMA_BASE_URL}")
+        _llm_heavy = OllamaLLM(
+            model=OLLAMA_MODEL,
+            base_url=OLLAMA_BASE_URL,
+            client_kwargs={"headers": _ollama_headers},
+        )
     return _llm_heavy
 
 

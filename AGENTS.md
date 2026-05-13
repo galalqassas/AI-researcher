@@ -113,7 +113,8 @@ All commands run via `python run.py`:
 
 | Variable | Default | Description |
 |---|---|---|
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
+| `OLLAMA_BASE_URL` | `https://ollama.com` | Ollama server URL (Cloud endpoint) |
+| `OLLAMA_API_KEY` | *(empty)* | Ollama API key (required for Cloud) |
 | `OLLAMA_MODEL` | `gemma4:31b-cloud` | LLM model for heavy tasks (bucket summaries, synthesis) |
 | `OLLAMA_MODEL_LIGHT` | `gemma4:31b-cloud` | LLM model for light tasks (per-paper summaries). Defaults to `OLLAMA_MODEL`; change to a smaller model (e.g. `gemma3:4b`) for cost savings. Requires `ollama pull`. |
 | `OLLAMA_MAX_TOKENS_PER_RUN` | `0` | Max estimated tokens per report run (0 = unlimited) |
@@ -236,12 +237,9 @@ tqdm                               # Progress bars
 python -m venv venv
 venv\Scripts\activate              # Windows
 pip install -r requirements.txt
-cp .env.example .env              # Edit .env if needed
+cp .env.example .env              # Edit .env to add your OLLAMA_API_KEY
 docker compose up -d              # Start Qdrant vector database
-ollama pull gemma4:31b-cloud      # Heavy LLM (bucket summaries, synthesis)
-ollama pull nomic-embed-text-v2-moe # Embedding model (~957MB)
-# Optional: pull a smaller model for cost savings on per-paper summaries:
-# ollama pull gemma3:4b           # Then set OLLAMA_MODEL_LIGHT=gemma3:4b in .env
+# Note: Since we are using Ollama Cloud, local model pulls via `ollama pull` are not required.
 python run.py serve                # Start API server on http://127.0.0.1:8000
 ```
 

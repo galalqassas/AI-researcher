@@ -2,7 +2,7 @@ import struct
 import logging
 import numpy as np
 from tqdm import tqdm
-from app.config import OLLAMA_BASE_URL, OLLAMA_EMBED_MODEL
+from app.config import OLLAMA_EMBED_BASE_URL, OLLAMA_EMBED_MODEL
 from app.database import get_session
 from app.models.paper import Paper
 from app.classification.qdrant_store import upsert_papers_batch
@@ -11,7 +11,7 @@ log = logging.getLogger(__name__)
 
 try:
     import ollama
-    ollama_client = ollama.Client(host=OLLAMA_BASE_URL)
+    ollama_client = ollama.Client(host=OLLAMA_EMBED_BASE_URL)
 except Exception as e:
     log.warning(f"Ollama client init failed: {e}")
     ollama_client = None
