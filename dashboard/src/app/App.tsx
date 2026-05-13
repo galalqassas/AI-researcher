@@ -212,63 +212,11 @@ export default function App() {
           })}
         </nav>
 
-        {/* System status */}
-        <div className="px-3 py-4 border-t border-[#F1F5F9]">
-          <p className="px-2 pb-2 text-[#94A3B8]" style={{ fontSize: '0.68rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-            System Status
-          </p>
-          {[
-            { label: 'API Server', status: true, detail: window.location.origin },
-            { label: 'DB Queue', status: true, detail: `${totalPapers || '—'} papers` },
-          ].map(item => (
-            <div key={item.label} className="flex items-center gap-2 px-2 py-1">
-              <div
-                className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${item.status ? 'bg-emerald-400' : 'bg-rose-400'}`}
-                style={{ boxShadow: item.status ? '0 0 4px #34D399' : '0 0 4px #F87171' }}
-              />
-              <span className="text-[#475569]" style={{ fontSize: '0.75rem', fontWeight: 500 }}>
-                {item.label}
-              </span>
-              <span className="text-[#CBD5E1] ml-auto" style={{ fontSize: '0.65rem' }}>
-                {item.detail}
-              </span>
-            </div>
-          ))}
-        </div>
+        {/* System status (Hidden per request) */}
+        {/* <div className="px-3 py-4 border-t border-[#F1F5F9]"> ... </div> */}
 
-        {/* Last run footer */}
-        {lastRun && (
-          <div
-            className="mx-3 mb-3 rounded-xl p-3 border"
-            style={{
-              background: lastRun.status === 'success' ? '#ECFDF5' : '#FFF1F2',
-              borderColor: lastRun.status === 'success' ? '#A7F3D0' : '#FECDD3',
-            }}
-          >
-            <div className="flex items-center gap-2 mb-1">
-              <div
-                className="w-1.5 h-1.5 rounded-full"
-                style={{
-                  background: lastRun.status === 'success' ? '#10B981' : '#F43F5E',
-                  boxShadow: lastRun.status === 'success' ? '0 0 4px #10B981' : '0 0 4px #F43F5E',
-                }}
-              />
-              <span
-                style={{
-                  fontSize: '0.7rem',
-                  fontWeight: 600,
-                  color: lastRun.status === 'success' ? '#059669' : '#E11D48',
-                }}
-              >
-                Last run {lastRun.status}
-              </span>
-            </div>
-            <p className="text-[#64748B]" style={{ fontSize: '0.68rem' }}>
-              {lastRun.name.replace(/_/g, ' ')} ·{' '}
-              {lastRun.duration_s ? `${(lastRun.duration_s / 60).toFixed(1)}m` : '—'}
-            </p>
-          </div>
-        )}
+        {/* Last run footer (Hidden per request) */}
+        {/* lastRun && <div ...> ... </div> */}
       </aside>
 
       {/* Main content */}
