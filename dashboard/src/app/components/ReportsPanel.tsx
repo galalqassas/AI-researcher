@@ -583,7 +583,7 @@ export function ReportsPanel() {
         </div>
       </div>
 
-      {/* Cost tip */}
+      {/* Cost tip
       <div className="flex items-start gap-3 bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl px-4 py-3">
         <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: 'linear-gradient(145deg, #818CF8, #6366F1)' }}>
           <span className="text-white" style={{ fontSize: '0.75rem' }}>💡</span>
@@ -595,6 +595,7 @@ export function ReportsPanel() {
           </p>
         </div>
       </div>
+      */}
 
       {/* Report history */}
       <div>
