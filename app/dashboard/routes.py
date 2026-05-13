@@ -1,36 +1,15 @@
 import json
-from fastapi import APIRouter, Request, Query
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
-from datetime import datetime, timezone
+from fastapi import APIRouter, Query
+from fastapi.responses import JSONResponse
 from app.database import Session
 from app.models.paper import Paper, Report, PipelineRun
 
 router = APIRouter()
-templates = Jinja2Templates(directory="app/dashboard/templates")
-
-
-@router.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request):
-    db = Session()
-    total = db.query(Paper).count()
-    today_start = datetime.combine(datetime.now(timezone.utc).date(), datetime.min.time())
-    today_count = db.query(Paper).filter(Paper.ingested_at >= today_start).count()
-    reports = db.query(Report).order_by(Report.generated_at.desc()).all()
-    last_run = db.query(PipelineRun).order_by(PipelineRun.started_at.desc()).first()
-    db.close()
-    return templates.TemplateResponse("dashboard.html", {
-        "request": request,
-        "total_papers": total,
-        "papers_today": today_count,
-        "reports": reports,
-        "periods": ["7d", "6m", "1y"],
-        "last_run": last_run,
-    })
 
 
 @router.post("/ingest")
 async def trigger_ingestion():
+    """Run the full ingestion pipeline: ingest → dedup → embed → classify."""
     from app.metrics import track_pipeline
     from app.ingestion.pipeline import run_ingestion
     from app.classification.dedup import deduplicate
@@ -50,29 +29,39 @@ async def trigger_ingestion():
             "classified": classified,
         }
 
-    return RedirectResponse("/", status_code=303)
+    return JSONResponse({
+        "status": "ok",
+        "paper_count": added,
+        "stages": {
+            "ingested": added,
+            "deduplicated": removed,
+            "embedded": embedded,
+            "classified": classified,
+        },
+    })
 
 
 @router.post("/reports/generate")
 async def trigger_report(period: str = "7d"):
+    """Generate a report for the given period."""
     from app.metrics import track_pipeline
     from app.reports.generator import generate_report
 
-    result = None
     try:
         with track_pipeline("report") as ctx:
             result = generate_report(period)
             if "error" in result:
-                raise RuntimeError(result["error"])
+                return JSONResponse({"error": result["error"]}, status_code=500)
             ctx["paper_count"] = result.get("papers", 0)
             ctx["stages_json"] = result
-    except Exception:
-        if result and "error" in result:
-            return RedirectResponse(f"/?error={result['error']}", status_code=303)
-        raise
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
 
-    report_id = result.get("id", 0) if result else 0
-    return RedirectResponse(f"/reports/{report_id}", status_code=303)
+    return JSONResponse({
+        "id": result.get("id", 0) if result else 0,
+        "period": period,
+        "paper_count": result.get("papers", 0) if result else 0,
+    })
 
 
 @router.get("/search", response_class=JSONResponse)
@@ -132,25 +121,33 @@ async def list_pipeline_runs(limit: int = Query(default=20, ge=1, le=100)):
     } for r in runs])
 
 
-@router.get("/reports", response_class=HTMLResponse)
-async def list_reports(request: Request):
+@router.get("/reports", response_class=JSONResponse)
+async def list_reports():
+    """List all reports as JSON."""
     db = Session()
     reports = db.query(Report).order_by(Report.generated_at.desc()).all()
     db.close()
-    return templates.TemplateResponse("reports.html", {
-        "request": request,
-        "reports": reports,
-    })
+    return JSONResponse([{
+        "id": r.id,
+        "period": r.period,
+        "generated_at": str(r.generated_at),
+        "paper_count": r.paper_count,
+        "content_html": r.content_html,
+    } for r in reports])
 
 
-@router.get("/reports/{report_id}", response_class=HTMLResponse)
-async def view_report(request: Request, report_id: int):
+@router.get("/reports/{report_id}", response_class=JSONResponse)
+async def view_report(report_id: int):
+    """Get a single report as JSON."""
     db = Session()
     report = db.query(Report).filter(Report.id == report_id).first()
     db.close()
     if not report:
-        return RedirectResponse("/", status_code=303)
-    return templates.TemplateResponse("report.html", {
-        "request": request,
-        "report": report,
+        return JSONResponse({"error": "Report not found"}, status_code=404)
+    return JSONResponse({
+        "id": report.id,
+        "period": report.period,
+        "generated_at": str(report.generated_at),
+        "paper_count": report.paper_count,
+        "content_html": report.content_html,
     })

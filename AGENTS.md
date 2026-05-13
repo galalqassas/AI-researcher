@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Auto-Researcher is a Python application that automatically ingests research papers from arXiv, classifies them into research buckets (General AI, Autonomous Agents, AI+Finance), and generates plain-English summaries via a local/cloud LLM (Ollama). It provides a FastAPI web dashboard and a Click CLI for pipeline operations. Vector embeddings are stored in **Qdrant** (Docker) alongside SQLite metadata.
+Auto-Researcher is a Python application that automatically ingests research papers from arXiv, classifies them into research buckets (General AI, Autonomous Agents, AI+Finance), and generates plain-English summaries via a local/cloud LLM (Ollama). It provides a FastAPI JSON API and a Click CLI for pipeline operations. Vector embeddings are stored in **Qdrant** (Docker) alongside SQLite metadata.
 
 ## Current Status: Fully Operational ✅
 
@@ -14,7 +14,7 @@ All five pipeline stages have been tested end-to-end with real data:
 | **Dedup** | ✅ Working | Fuzzy title matching removes duplicates, keeps longer content; orphans cleaned from Qdrant and FTS |
 | **Classify** | ✅ Working | Hybrid RRF classification (dense cosine + BM25 via FTS5), borderline reranking, bucket embedding cache |
 | **Report** | ✅ Working | Per-paper summaries (light model), per-bucket summaries + cross-domain synthesis (heavy model), LLM response cache, token cap |
-| **Dashboard** | ✅ Working | All endpoints returning 200 |
+| **API** | ✅ Working | All endpoints returning JSON |
 
 ## Tech Stack
 
@@ -82,8 +82,7 @@ auto-researcher/
 │   │   └── prompts.py      # LLM prompt templates
 │   └── dashboard/
 │       ├── __init__.py
-│       ├── routes.py        # FastAPI endpoints (dashboard, search, pipeline-runs, reports)
-│       └── templates/       # HTML templates (base, dashboard, report, reports)
+│       └── routes.py        # FastAPI JSON API endpoints (ingest, reports, search, pipeline-runs)
 ```
 
 ## CLI Commands
@@ -147,13 +146,12 @@ All commands run via `python run.py`:
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/` | Dashboard home (paper counts, reports list, last pipeline run) |
-| POST | `/ingest` | Trigger ingestion → dedup → embed → classify (with metrics tracking) |
-| POST | `/reports/generate?period=7d` | Generate report (with metrics tracking) |
+| POST | `/ingest` | Trigger ingestion → dedup → embed → classify. Returns JSON `{status, paper_count, stages}` |
+| POST | `/reports/generate?period=7d` | Generate report. Returns JSON `{id, period, paper_count}` or `{error}` on failure |
 | GET | `/search?q=...&limit=10` | Hybrid search: embed query, search Qdrant + FTS5, merge via RRF, return ranked JSON |
 | GET | `/pipeline-runs` | List recent pipeline runs (JSON) |
-| GET | `/reports` | List all reports |
-| GET | `/reports/{id}` | View single report |
+| GET | `/reports` | List all reports (JSON array) |
+| GET | `/reports/{id}` | Get single report (JSON). Returns 404 if not found |
 
 ## Code Conventions
 
@@ -164,9 +162,8 @@ All commands run via `python run.py`:
 - Embeddings serialized to bytes via `struct.pack` / deserialized via `struct.unpack` for SQLite; stored as float arrays in Qdrant
 - Bucket assignments stored as JSON strings in the `buckets` column
 - Qdrant client is a module-level singleton (`_qdrant_client` in `qdrant_store.py`) with gRPC transport enabled by default. All functions handle `None` client gracefully.
-- CLI built with Click decorators in `run.py`; dashboard routes in `app/dashboard/routes.py`
+- CLI built with Click decorators in `run.py`; API routes in `app/dashboard/routes.py`
 - LLM prompts stored as constants in `app/reports/prompts.py`
-- HTML templates use Jinja2 with a `base.html` layout
 - Cosine similarity implemented in numpy (not scikit-learn)
 - LLM calls use lazy-init tiered model routing: `_get_llm_light()` and `_get_llm_heavy()` create `OllamaLLM` instances on first use instead of at import time, avoiding crashes if Ollama is not yet running.
 - LLM responses are cached to `data/llm_cache.json` keyed on SHA-256 hash of `model:prompt`. Cache is loaded once per `generate_report()` call and persists across runs. Token usage tracked via global `_tokens_used`, capped by `OLLAMA_MAX_TOKENS_PER_RUN` (0 = unlimited).
@@ -183,7 +180,7 @@ All commands run via `python run.py`:
 | Issue | Severity | Description |
 |---|---|---|
 | O(n²) deduplication | Medium | `dedup.py` compares every pair of papers. Will be slow for large databases. |
-| Dashboard routes block synchronously | Medium | `POST /ingest` and `POST /reports/generate` block the server for the full pipeline duration with no user feedback. |
+| API routes block synchronously | Medium | `POST /ingest` and `POST /reports/generate` block the server for the full pipeline duration with no user feedback. |
 | `OLLAMA_MODEL_LIGHT` defaults to heavy model | Low | By default both light and heavy tasks use the same model (`gemma4:31b-cloud`). Cost savings only kick in when `OLLAMA_MODEL_LIGHT` is set to a smaller model in `.env`. |
 
 ## Testing
@@ -219,7 +216,7 @@ tests/
 ## Key Dependencies
 
 ```
-fastapi, uvicorn, jinja2          # Web framework + templates
+fastapi, uvicorn                   # Web framework
 arxiv==2.1.3                      # arXiv API client
 requests                           # HTTP downloads + webhook alerts
 pymupdf                            # PDF text extraction
@@ -245,7 +242,7 @@ ollama pull gemma4:31b-cloud      # Heavy LLM (bucket summaries, synthesis)
 ollama pull nomic-embed-text-v2-moe # Embedding model (~957MB)
 # Optional: pull a smaller model for cost savings on per-paper summaries:
 # ollama pull gemma3:4b           # Then set OLLAMA_MODEL_LIGHT=gemma3:4b in .env
-python run.py serve                # Start dashboard on http://127.0.0.1:8000
+python run.py serve                # Start API server on http://127.0.0.1:8000
 ```
 
 ## Database Migrations

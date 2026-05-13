@@ -1,4 +1,4 @@
-"""Tests for app.dashboard.routes — FastAPI endpoints."""
+"""Tests for app.dashboard.routes — FastAPI JSON API endpoints."""
 
 from unittest.mock import patch
 
@@ -37,10 +37,11 @@ def app_client(app_engine):
         yield TestClient(app)
 
 
-class TestDashboardRoutes:
+class TestAPIRoutes:
 
-    def test_dashboard_ok(self, app_client):
-        assert app_client.get("/", follow_redirects=False).status_code == 200
+    def test_root_not_found(self, app_client):
+        """GET / is no longer a valid endpoint (dashboard removed)."""
+        assert app_client.get("/").status_code == 404
 
     def test_pipeline_runs_returns_json(self, app_client, app_engine):
         with patch.object(DBSession, "__call__", side_effect=lambda: sessionmaker(bind=app_engine)()):
@@ -49,12 +50,17 @@ class TestDashboardRoutes:
         resp = app_client.get("/pipeline-runs")
         assert resp.status_code == 200 and isinstance(resp.json(), list)
 
-    def test_list_reports(self, app_client):
-        assert app_client.get("/reports", follow_redirects=False).status_code == 200
+    def test_list_reports_returns_json(self, app_client):
+        resp = app_client.get("/reports")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, list)
 
     def test_view_report_not_found(self, app_client):
-        resp = app_client.get("/reports/9999", follow_redirects=False)
-        assert resp.status_code == 303 and resp.headers["location"] == "/"
+        resp = app_client.get("/reports/9999")
+        assert resp.status_code == 404
+        data = resp.json()
+        assert "error" in data
 
     def test_search_returns_results(self, app_client):
         with patch("app.classification.embedder.get_embedding", return_value=None), \
