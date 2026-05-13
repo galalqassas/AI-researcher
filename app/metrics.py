@@ -16,10 +16,10 @@ def track_pipeline(name: str):
     """Context manager that tracks a pipeline run and saves results to DB.
 
     Usage:
-        with track_pipeline("ingest") as run:
+        with track_pipeline("ingest") as ctx:
             added = run_ingestion()
-            run.paper_count = added
-            run.stages_json = {"ingested": added}
+            ctx["paper_count"] = added
+            ctx["stages_json"] = {"ingested": added}
     """
     session = Session()
     run = PipelineRun(
@@ -35,8 +35,6 @@ def track_pipeline(name: str):
     start = time.perf_counter()
     error_msg = None
     status = "success"
-    # Collect results from inside the with-block via a dict
-    # (the yielded ORM object is detached after session.close())
     ctx = {"paper_count": 0, "stages_json": {}}
 
     try:
@@ -49,16 +47,21 @@ def track_pipeline(name: str):
     finally:
         duration = time.perf_counter() - start
         session = Session()
-        run = session.get(PipelineRun, run_id)
-        if run:
-            run.finished_at = datetime.now(timezone.utc)
-            run.status = status
-            run.duration_s = round(duration, 2)
-            run.error = error_msg
-            run.paper_count = ctx.get("paper_count", 0)
-            run.stages_json = json.dumps(ctx.get("stages_json", {}))
-            session.commit()
-        session.close()
+        try:
+            run = session.get(PipelineRun, run_id)
+            if run:
+                run.finished_at = datetime.now(timezone.utc)
+                run.status = status
+                run.duration_s = round(duration, 2)
+                run.error = error_msg
+                run.paper_count = ctx.get("paper_count", 0)
+                run.stages_json = json.dumps(ctx.get("stages_json", {}))
+                session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
 
     from app.alerts import send_alert
     send_alert(

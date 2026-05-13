@@ -24,6 +24,7 @@ ARXIV_MAX_RESULTS = int(os.getenv("ARXIV_MAX_RESULTS", "2"))
 # Qdrant Vector Database
 QDRANT_HOST = os.getenv("QDRANT_HOST", "localhost")
 QDRANT_PORT = int(os.getenv("QDRANT_PORT", "6333"))
+QDRANT_GRPC_PORT = int(os.getenv("QDRANT_GRPC_PORT", "6334"))
 QDRANT_COLLECTION = os.getenv("QDRANT_COLLECTION", "papers")
 QDRANT_EMBED_DIMENSION = int(os.getenv("QDRANT_EMBED_DIMENSION", "768"))
 
@@ -55,7 +56,7 @@ RERANK_WEIGHT_BM25 = float(os.getenv("RERANK_WEIGHT_BM25", "0.4"))
 DEDUP_THRESHOLD = float(os.getenv("DEDUP_THRESHOLD", "0.85"))
 APP_HOST = os.getenv("APP_HOST", "127.0.0.1")
 APP_PORT = int(os.getenv("APP_PORT", "8000"))
-REPORT_PERIODS = ["7d", "6m", "1y"]
+REPORT_PERIODS = ["7d", "1m", "3m", "6m", "1y"]
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
 
 for d in [DATA_DIR, PDFS_DIR, REPORTS_DIR]:

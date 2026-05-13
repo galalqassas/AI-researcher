@@ -11,6 +11,7 @@ from qdrant_client.models import (
 from app.config import (
     QDRANT_HOST,
     QDRANT_PORT,
+    QDRANT_GRPC_PORT,
     QDRANT_COLLECTION,
     QDRANT_EMBED_DIMENSION,
     OLLAMA_EMBED_MODEL,
@@ -21,8 +22,16 @@ log = logging.getLogger(__name__)
 _qdrant_client: QdrantClient | None = None
 
 try:
-    _qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
-    log.info(f"Qdrant client initialized ({QDRANT_HOST}:{QDRANT_PORT})")
+    # Prefer gRPC for better performance on large batch operations when available.
+    # Falls back to REST-only if gRPC port is not configured.
+    prefer_grpc = QDRANT_GRPC_PORT is not None
+    _qdrant_client = QdrantClient(
+        host=QDRANT_HOST,
+        port=QDRANT_PORT,
+        grpc_port=QDRANT_GRPC_PORT if prefer_grpc else None,
+        prefer_grpc=prefer_grpc,
+    )
+    log.info(f"Qdrant client initialized ({QDRANT_HOST}:{QDRANT_PORT}, grpc={prefer_grpc})")
 except Exception as e:
     log.warning(f"Qdrant client init failed: {e}")
     _qdrant_client = None
@@ -144,3 +153,79 @@ def get_collection_info(collection_name: str = QDRANT_COLLECTION):
     except Exception as e:
         log.error(f"Failed to get Qdrant collection info: {e}")
         return None
+
+
+def resync_embeddings():
+    """Synchronize SQLite embeddings into Qdrant.
+
+    Finds all papers that have embeddings in SQLite but are missing from
+    Qdrant, and upserts them. Used to recover from dual-write drift.
+    Returns the number of papers re-synced.
+    """
+    from app.database import Session
+    from app.models.paper import Paper
+
+    client = get_client()
+    if client is None:
+        log.error("Qdrant client not available — cannot resync")
+        return 0
+
+    ensure_collection()
+    collection_info = get_collection_info()
+    if collection_info is None:
+        log.error("Could not get Qdrant collection info — cannot resync")
+        return 0
+
+    session = Session()
+    try:
+        papers_with_embeddings = session.query(Paper).filter(Paper.embedding != None).all()
+        if not papers_with_embeddings:
+            log.info("No papers with embeddings found in SQLite")
+            return 0
+
+        # Get existing point IDs from Qdrant
+        existing_ids = set()
+        offset = None
+        while True:
+            results, offset = client.scroll(
+                collection_name=QDRANT_COLLECTION,
+                limit=100,
+                offset=offset,
+                with_payload=False,
+                with_vectors=False,
+            )
+            existing_ids.update(p.id for p in results)
+            if offset is None:
+                break
+
+        # Find papers missing from Qdrant
+        batch = []
+        for paper in papers_with_embeddings:
+            if paper.id not in existing_ids and paper.embedding is not None:
+                vec = bytes_to_embed_local(paper.embedding)
+                batch.append({
+                    "id": paper.id,
+                    "arxiv_id": paper.arxiv_id,
+                    "title": paper.title,
+                    "embedding": vec,
+                })
+
+        if batch:
+            upsert_papers_batch(batch)
+            log.info(f"Re-synced {len(batch)} papers from SQLite to Qdrant")
+        else:
+            log.info("Qdrant is in sync — no papers to resync")
+
+        return len(batch)
+    except Exception as e:
+        log.error(f"Resync failed: {e}")
+        return 0
+    finally:
+        session.close()
+
+
+def bytes_to_embed_local(data: bytes) -> np.ndarray:
+    """Deserialize bytes back to numpy embedding (local copy to avoid circular import)."""
+    import struct
+    n = len(data) // 4
+    return np.array(struct.unpack(f"{n}f", data), dtype=np.float32)

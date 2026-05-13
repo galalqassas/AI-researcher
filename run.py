@@ -1,6 +1,6 @@
 import logging
 import click
-from app.config import APP_HOST, APP_PORT, BUCKETS
+from app.config import APP_HOST, APP_PORT, BUCKETS, REPORT_PERIODS
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
 
@@ -41,7 +41,7 @@ def classify():
 
 
 @cli.command()
-@click.option("--period", type=click.Choice(["7d", "6m", "1y"]), required=True)
+@click.option("--period", type=click.Choice(REPORT_PERIODS), required=True)
 def report(period):
     """Generate a research report for a time period."""
     from app.reports.generator import generate_report
@@ -51,8 +51,10 @@ def report(period):
 
 @cli.command(name="pipeline")
 @click.option("--max-results", default=None, type=int, help="Max papers per bucket")
-@click.option("--period", default="7d", type=click.Choice(["7d", "6m", "1y"]), help="Report period")
-def run_pipeline(max_results, period):
+@click.option("--period", default="7d", type=click.Choice(REPORT_PERIODS), help="Report period")
+@click.option("--query", default=None, help="arXiv search query (default: category-based)")
+@click.option("--bucket", default=None, type=click.Choice(BUCKETS), help="Only ingest this bucket")
+def run_pipeline(max_results, period, query, bucket):
     """Run the full pipeline: ingest → dedup → embed → classify → report."""
     from app.ingestion.pipeline import run_ingestion
     from app.classification.dedup import deduplicate
@@ -63,7 +65,7 @@ def run_pipeline(max_results, period):
 
     with track_pipeline("full_pipeline") as ctx:
         click.echo("=== Step 1: Ingest ===")
-        added = run_ingestion(max_results=max_results)
+        added = run_ingestion(max_results=max_results, query=query, bucket=bucket)
         click.echo(f"  Ingested: {added} new papers")
 
         click.echo("=== Step 2: Dedup ===")
@@ -92,6 +94,14 @@ def run_pipeline(max_results, period):
         }
 
     click.echo("Pipeline complete!")
+
+
+@cli.command()
+def resync():
+    """Re-sync embeddings from SQLite to Qdrant (recover from dual-write drift)."""
+    from app.classification.qdrant_store import resync_embeddings
+    count = resync_embeddings()
+    click.echo(f"Re-synced {count} papers from SQLite to Qdrant")
 
 
 @cli.command()

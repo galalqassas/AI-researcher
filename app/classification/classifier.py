@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import hashlib
 import numpy as np
 from pathlib import Path
 from tqdm import tqdm
@@ -8,7 +9,7 @@ from sqlalchemy import text
 from app.config import SIMILARITY_THRESHOLD, RRF_K, RERANK_MARGIN, RERANK_WEIGHT_COSINE, RERANK_WEIGHT_BM25
 from app.classification.embedder import get_embedding, bytes_to_embed
 from app.classification.qdrant_store import get_collection_info
-from app.database import Session, engine
+from app.database import get_session, engine
 from app.models.paper import Paper
 
 log = logging.getLogger(__name__)
@@ -19,30 +20,34 @@ BUCKET_DESCRIPTIONS = {
     "ai_finance": "AI in finance machine learning trading financial forecasting fintech risk management portfolio optimization algorithmic trading deep learning finance investment",
 }
 
+_BUCKET_CACHE_VERSION = hashlib.sha256(
+    json.dumps(BUCKET_DESCRIPTIONS, sort_keys=True).encode()
+).hexdigest()[:16]
+
 _bucket_cache_path = Path(__file__).resolve().parent.parent.parent / "data" / "bucket_embeddings.json"
 
 
-def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
-    """Compute cosine similarity between two vectors."""
-    norm_a = np.linalg.norm(a)
-    norm_b = np.linalg.norm(b)
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-    return float(np.dot(a, b) / (norm_a * norm_b))
-
-
 def compute_bucket_embeddings() -> dict[str, np.ndarray]:
-    """Pre-compute embedding for each bucket description (cached to disk)."""
-    cache = {}
+    """Pre-compute embedding for each bucket description (cached to disk).
+
+    Cache is invalidated automatically when BUCKET_DESCRIPTIONS changes
+    by comparing a SHA-256 fingerprint of the descriptions dict.
+    """
     if _bucket_cache_path.exists():
         try:
             raw = json.loads(_bucket_cache_path.read_text())
-            cache = {k: np.array(v, dtype=np.float32) for k, v in raw.items()}
-            log.info("Loaded bucket embeddings from cache")
-            return cache
+            # Check cache version — invalidate if descriptions changed
+            cached_version = raw.get("_version")
+            if cached_version == _BUCKET_CACHE_VERSION:
+                cache = {k: np.array(v, dtype=np.float32) for k, v in raw.items() if k != "_version"}
+                log.info("Loaded bucket embeddings from cache (version match)")
+                return cache
+            else:
+                log.info("Bucket descriptions changed — invalidating embedding cache")
         except Exception:
             log.warning("Failed to load bucket embedding cache, recomputing")
 
+    cache = {}
     for bucket, desc in BUCKET_DESCRIPTIONS.items():
         vec = get_embedding(desc)
         if vec is not None:
@@ -52,10 +57,22 @@ def compute_bucket_embeddings() -> dict[str, np.ndarray]:
 
     if cache:
         _bucket_cache_path.parent.mkdir(parents=True, exist_ok=True)
-        _bucket_cache_path.write_text(json.dumps({k: v.tolist() for k, v in cache.items()}))
+        # Save cache with version fingerprint
+        cache_data = {k: v.tolist() for k, v in cache.items()}
+        cache_data["_version"] = _BUCKET_CACHE_VERSION
+        _bucket_cache_path.write_text(json.dumps(cache_data))
         log.info("Saved bucket embeddings to cache")
 
     return cache
+
+
+def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+    """Compute cosine similarity between two vectors."""
+    norm_a = np.linalg.norm(a)
+    norm_b = np.linalg.norm(b)
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return float(np.dot(a, b) / (norm_a * norm_b))
 
 
 def _sanitize_fts_query(query: str) -> str:
@@ -98,7 +115,7 @@ def _bm25_search(query: str, limit: int = 200) -> list[tuple[int, float]]:
 
 def classify_all_papers():
     """Classify all embedded papers into research buckets using hybrid RRF."""
-    session = Session()
+    session = get_session()
     papers = session.query(Paper).filter(Paper.embedding != None).all()
     log.info(f"Classifying {len(papers)} papers")
 
@@ -114,69 +131,68 @@ def classify_all_papers():
         log.info(f"Qdrant has {qdrant_info['points_count']} vectors indexed")
 
     # BM25 search per bucket description keywords for hybrid ranking
-    bm25_rank_per_bucket: dict[str, dict[int, int]] = {}  # pre-computed rank per bucket
+    bm25_rank_per_bucket: dict[str, dict[int, int]] = {}
     paper_ids_in_bm25: set[int] = set()
     for bucket, desc in BUCKET_DESCRIPTIONS.items():
         hits = _bm25_search(desc, limit=200)
-        # Pre-sort: ascending by score (most negative = most relevant = rank 0)
         sorted_hits = sorted(hits, key=lambda x: x[1])
         bm25_rank_per_bucket[bucket] = {pid: rank for rank, (pid, _) in enumerate(sorted_hits)}
         paper_ids_in_bm25.update(pid for pid, _ in hits)
 
-    for paper in tqdm(papers, desc="Classifying"):
-        if not paper.embedding:
-            continue
+    try:
+        for paper in tqdm(papers, desc="Classifying"):
+            if not paper.embedding:
+                continue
 
-        vec = bytes_to_embed(paper.embedding)
+            vec = bytes_to_embed(paper.embedding)
 
-        # Dense scores (cosine similarity)
-        dense_scores: dict[str, float] = {}
-        for bucket, bucket_vec in bucket_embeds.items():
-            dense_scores[bucket] = cosine_similarity(vec, bucket_vec)
+            # Dense scores (cosine similarity)
+            dense_scores: dict[str, float] = {}
+            for bucket, bucket_vec in bucket_embeds.items():
+                dense_scores[bucket] = cosine_similarity(vec, bucket_vec)
 
-        # Hybrid RRF fusion when BM25 data exists for this paper
-        if paper.id in paper_ids_in_bm25:
-            final_scores: dict[str, float] = {}
-            # Pre-compute dense ranking once (shared across buckets)
-            dense_ranked = sorted(dense_scores.items(), key=lambda x: x[1], reverse=True)
-            dense_rank_map = {b: rank for rank, (b, _) in enumerate(dense_ranked)}
+            # Hybrid RRF fusion when BM25 data exists for this paper
+            if paper.id in paper_ids_in_bm25:
+                final_scores: dict[str, float] = {}
+                dense_ranked = sorted(dense_scores.items(), key=lambda x: x[1], reverse=True)
+                dense_rank_map = {b: rank for rank, (b, _) in enumerate(dense_ranked)}
 
-            for bucket in bucket_embeds:
-                rrf_score = 0.0
-                # Dense rank contribution
-                if bucket in dense_rank_map:
-                    rrf_score += 1.0 / (RRF_K + dense_rank_map[bucket] + 1)
-                # BM25 rank contribution (pre-computed per bucket)
-                bucket_bm25_ranks = bm25_rank_per_bucket.get(bucket, {})
-                if paper.id in bucket_bm25_ranks:
-                    rrf_score += 1.0 / (RRF_K + bucket_bm25_ranks[paper.id] + 1)
-                final_scores[bucket] = rrf_score
+                for bucket in bucket_embeds:
+                    rrf_score = 0.0
+                    if bucket in dense_rank_map:
+                        rrf_score += 1.0 / (RRF_K + dense_rank_map[bucket] + 1)
+                    bucket_bm25_ranks = bm25_rank_per_bucket.get(bucket, {})
+                    if paper.id in bucket_bm25_ranks:
+                        rrf_score += 1.0 / (RRF_K + bucket_bm25_ranks[paper.id] + 1)
+                    final_scores[bucket] = rrf_score
 
-            # Use dense threshold for primary assignment
-            # Rerank borderline papers (within RERANK_MARGIN below threshold) with blended score
-            matched = [b for b, s in dense_scores.items() if s >= SIMILARITY_THRESHOLD]
-            borderline = [b for b, s in dense_scores.items()
-                          if SIMILARITY_THRESHOLD - RERANK_MARGIN <= s < SIMILARITY_THRESHOLD]
-            if borderline and final_scores:
-                for b in borderline:
-                    cos_score = dense_scores.get(b, 0)
-                    bm25_rank_score = final_scores.get(b, 0)
-                    blended = RERANK_WEIGHT_COSINE * cos_score + RERANK_WEIGHT_BM25 * bm25_rank_score
-                    if blended >= SIMILARITY_THRESHOLD * 0.8 and b not in matched:
-                        matched.append(b)
-                        log.debug(f"Reranked {paper.arxiv_id} into {b}: cosine={cos_score:.3f} rrf={bm25_rank_score:.4f} blended={blended:.4f}")
-            if not matched:
-                matched = [max(final_scores, key=final_scores.get)]
-        else:
-            # Pure dense fallback (no BM25 data for this paper)
-            matched = [b for b, s in dense_scores.items() if s >= SIMILARITY_THRESHOLD]
-            if not matched:
-                matched = [max(dense_scores, key=dense_scores.get)]
+                matched = [b for b, s in dense_scores.items() if s >= SIMILARITY_THRESHOLD]
+                borderline = [b for b, s in dense_scores.items()
+                              if SIMILARITY_THRESHOLD - RERANK_MARGIN <= s < SIMILARITY_THRESHOLD]
+                if borderline and final_scores:
+                    for b in borderline:
+                        cos_score = dense_scores.get(b, 0)
+                        bm25_rank_score = final_scores.get(b, 0)
+                        blended = RERANK_WEIGHT_COSINE * cos_score + RERANK_WEIGHT_BM25 * bm25_rank_score
+                        if blended >= SIMILARITY_THRESHOLD * 0.8 and b not in matched:
+                            matched.append(b)
+                            log.debug(f"Reranked {paper.arxiv_id} into {b}: cosine={cos_score:.3f} rrf={bm25_rank_score:.4f} blended={blended:.4f}")
+                if not matched:
+                    matched = [max(final_scores, key=final_scores.get)]
+            else:
+                matched = [b for b, s in dense_scores.items() if s >= SIMILARITY_THRESHOLD]
+                if not matched:
+                    matched = [max(dense_scores, key=dense_scores.get)]
 
-        paper.buckets = json.dumps(matched)
-        log.debug(f"{paper.arxiv_id}: {matched}")
+            paper.buckets = json.dumps(matched)
+            log.debug(f"{paper.arxiv_id}: {matched}")
 
-    session.commit()
-    session.close()
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
     log.info("Classification complete")
     return len(papers)

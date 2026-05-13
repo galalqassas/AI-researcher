@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 from app.config import DB_PATH
@@ -8,6 +9,25 @@ Session = sessionmaker(bind=engine)
 
 class Base(DeclarativeBase):
     pass
+
+
+@contextmanager
+def get_session():
+    """Context manager that yields a session and guarantees close on exit.
+
+    Usage:
+        with get_session() as session:
+            session.add(obj)
+            session.commit()
+    """
+    session = Session()
+    try:
+        yield session
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 def init_db():
@@ -23,14 +43,13 @@ def init_db():
 def rebuild_fts():
     """Rebuild FTS index from all papers in SQLite."""
     from app.models.paper import Paper
-    session = Session()
-    papers = session.query(Paper).all()
-    with engine.connect() as conn:
-        conn.execute(text("DELETE FROM papers_fts"))
-        for p in papers:
-            conn.execute(
-                text("INSERT INTO papers_fts (rowid, title, abstract) VALUES (:id, :title, :abstract)"),
-                {"id": p.id, "title": p.title or "", "abstract": p.abstract or ""},
-            )
-        conn.commit()
-    session.close()
+    with get_session() as session:
+        papers = session.query(Paper).all()
+        with engine.connect() as conn:
+            conn.execute(text("DELETE FROM papers_fts"))
+            for p in papers:
+                conn.execute(
+                    text("INSERT INTO papers_fts (rowid, title, abstract) VALUES (:id, :title, :abstract)"),
+                    {"id": p.id, "title": p.title or "", "abstract": p.abstract or ""},
+                )
+            conn.commit()

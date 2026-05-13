@@ -15,13 +15,32 @@ log = logging.getLogger(__name__)
 
 PERIOD_DAYS = {
     "7d": 7,
+    "1m": 30,
+    "3m": 90,
     "6m": 180,
     "1y": 365,
 }
 
-# --- Tiered model routing: light for summaries, heavy for synthesis ---
-llm_light = OllamaLLM(model=OLLAMA_MODEL_LIGHT)
-llm_heavy = OllamaLLM(model=OLLAMA_MODEL)
+# --- Tiered model routing: lazy initialization to avoid import-time failures ---
+_llm_light: OllamaLLM | None = None
+_llm_heavy: OllamaLLM | None = None
+
+
+def _get_llm_light() -> OllamaLLM:
+    global _llm_light
+    if _llm_light is None:
+        log.info(f"Initializing light LLM: {OLLAMA_MODEL_LIGHT}")
+        _llm_light = OllamaLLM(model=OLLAMA_MODEL_LIGHT)
+    return _llm_light
+
+
+def _get_llm_heavy() -> OllamaLLM:
+    global _llm_heavy
+    if _llm_heavy is None:
+        log.info(f"Initializing heavy LLM: {OLLAMA_MODEL}")
+        _llm_heavy = OllamaLLM(model=OLLAMA_MODEL)
+    return _llm_heavy
+
 
 # --- LLM response cache (persisted to JSON, loaded once per run) ---
 _cache_path = Path(__file__).resolve().parent.parent.parent / "data" / "llm_cache.json"
@@ -85,7 +104,7 @@ def summarize_paper(paper) -> str:
         title=paper.title, abstract=paper.abstract or ""
     )
     try:
-        return _cached_invoke(llm_light, prompt)
+        return _cached_invoke(_get_llm_light(), prompt)
     except RuntimeError:
         raise
     except Exception as e:
@@ -111,7 +130,7 @@ def summarize_bucket(bucket: str, papers) -> str:
         bucket=bucket, papers=paper_text
     )
     try:
-        return _cached_invoke(llm_heavy, prompt)
+        return _cached_invoke(_get_llm_heavy(), prompt)
     except RuntimeError:
         raise
     except Exception as e:
@@ -127,7 +146,7 @@ def generate_cross_synthesis(summaries: dict) -> str:
         ai_finance=summaries.get("ai_finance", "No papers."),
     )
     try:
-        return _cached_invoke(llm_heavy, prompt)
+        return _cached_invoke(_get_llm_heavy(), prompt)
     except RuntimeError:
         raise
     except Exception as e:
@@ -162,7 +181,11 @@ def build_html_report(summaries: dict, cross_synthesis: str, papers_by_bucket: d
 
 
 def generate_report(period: str) -> dict:
-    """Generate a research report for the given time period."""
+    """Generate a research report for the given time period.
+
+    Saves partial results on failure — if LLM calls fail partway through,
+    any completed bucket summaries and per-paper summaries are still saved.
+    """
     global _llm_cache, _tokens_used
     _llm_cache = None  # force reload from disk
     _tokens_used = 0
@@ -173,48 +196,66 @@ def generate_report(period: str) -> dict:
     log.info(f"Generating report for period: {period}")
     session = Session()
 
-    papers = get_papers_for_period(period, session)
-    if not papers:
-        session.close()
-        return {"error": f"No papers found for period {period}"}
+    try:
+        papers = get_papers_for_period(period, session)
+        if not papers:
+            return {"error": f"No papers found for period {period}"}
 
-    papers_by_bucket = {}
-    for p in papers:
-        buckets = json.loads(p.buckets) if p.buckets else ["general_ai"]
-        for b in buckets:
-            papers_by_bucket.setdefault(b, []).append(p)
+        papers_by_bucket = {}
+        for p in papers:
+            buckets = json.loads(p.buckets) if p.buckets else ["general_ai"]
+            for b in buckets:
+                papers_by_bucket.setdefault(b, []).append(p)
 
-    # Per-paper summaries (light model)
-    for p in papers:
-        if not hasattr(p, '_summary'):
+        # Per-paper summaries (light model) — collect what we can
+        for p in papers:
+            if not hasattr(p, '_summary'):
+                try:
+                    p._summary = summarize_paper(p)
+                except RuntimeError:
+                    raise
+                except Exception:
+                    p._summary = None
+
+        # Per-bucket summaries — collect what we can
+        summaries = {}
+        for bucket in ["general_ai", "autonomous_agents", "ai_finance"]:
+            bp = papers_by_bucket.get(bucket, [])
+            log.info(f"Summarizing bucket '{bucket}' ({len(bp)} papers)...")
             try:
-                p._summary = summarize_paper(p)
+                summaries[bucket] = summarize_bucket(bucket, bp)
             except RuntimeError:
                 raise
-            except Exception:
-                p._summary = None
+            except Exception as e:
+                log.error(f"Bucket summary failed for {bucket}: {e}")
+                summaries[bucket] = f"Summary generation failed for {bucket}."
 
-    summaries = {}
-    for bucket in tqdm(["general_ai", "autonomous_agents", "ai_finance"], desc="Summarizing buckets"):
-        bp = papers_by_bucket.get(bucket, [])
-        log.info(f"Summarizing bucket '{bucket}' ({len(bp)} papers)...")
-        summaries[bucket] = summarize_bucket(bucket, bp)
+        # Cross-domain synthesis
+        log.info("Generating cross-domain synthesis...")
+        try:
+            cross_synthesis = generate_cross_synthesis(summaries)
+        except RuntimeError:
+            raise
+        except Exception as e:
+            log.error(f"Cross-domain synthesis failed: {e}")
+            cross_synthesis = "Cross-domain synthesis unavailable."
 
-    log.info("Generating cross-domain synthesis...")
-    cross_synthesis = generate_cross_synthesis(summaries)
+        content_html = build_html_report(summaries, cross_synthesis, papers_by_bucket, period)
 
-    content_html = build_html_report(summaries, cross_synthesis, papers_by_bucket, period)
+        report = Report(
+            period=period,
+            generated_at=datetime.now(timezone.utc),
+            content_html=content_html,
+            paper_count=len(papers),
+        )
+        session.add(report)
+        session.commit()
 
-    report = Report(
-        period=period,
-        generated_at=datetime.now(timezone.utc),
-        content_html=content_html,
-        paper_count=len(papers),
-    )
-    session.add(report)
-    session.commit()
-
-    result = {"id": report.id, "period": period, "papers": len(papers)}
-    log.info(f"Report generated: {result}")
-    session.close()
-    return result
+        result = {"id": report.id, "period": period, "papers": len(papers)}
+        log.info(f"Report generated: {result}")
+        return result
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
