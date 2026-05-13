@@ -5,7 +5,7 @@ from tqdm import tqdm
 from app.config import OLLAMA_EMBED_BASE_URL, OLLAMA_EMBED_MODEL
 from app.database import get_session
 from app.models.paper import Paper
-from app.classification.qdrant_store import upsert_papers_batch
+from app.classification.pinecone_store import upsert_papers_batch
 
 log = logging.getLogger(__name__)
 
@@ -47,9 +47,9 @@ def embed_all_papers() -> int:
 
     Embeddings are stored both:
       - in the SQLite database (LargeBinary column) for backward compatibility
-      - in the Qdrant vector database for similarity search
+      - in the Pinecone vector database for similarity search
 
-    Returns the number of papers successfully embedded (not including Qdrant failures).
+    Returns the number of papers successfully embedded (not including Pinecone failures).
     """
     with get_session() as session:
         papers = session.query(Paper).filter(Paper.embedding == None).all()
@@ -68,7 +68,7 @@ def embed_all_papers() -> int:
                 paper.embedding = embed_to_bytes(vec)
                 embedded_count += 1
 
-                # Collect for Qdrant batch upsert
+                # Collect for Pinecone batch upsert
                 batch.append({
                     "id": paper.id,
                     "arxiv_id": paper.arxiv_id,
@@ -79,13 +79,13 @@ def embed_all_papers() -> int:
         # Commit to SQLite
         session.commit()
 
-    # Batch upsert to Qdrant vector database
+    # Batch upsert to Pinecone vector database
     if batch:
         try:
             upsert_papers_batch(batch)
-            log.info(f"Stored {len(batch)} vectors in Qdrant")
+            log.info(f"Stored {len(batch)} vectors in Pinecone")
         except Exception as e:
-            log.error(f"Qdrant upsert failed (vectors still in SQLite): {e}")
+            log.error(f"Pinecone upsert failed (vectors still in SQLite): {e}")
 
     log.info(f"Embedded {embedded_count} papers")
     return embedded_count

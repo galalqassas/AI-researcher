@@ -9,7 +9,7 @@ Automatically ingests research papers from arXiv, classifies them into research 
 | **Python** | 3.10+ | Used for backend pipeline and API |
 | **Node.js** | 18+ | Used for dashboard frontend (React + Vite) |
 | **pnpm** | Any | Dashboard package manager (lockfile present) |
-| **Docker** | Any modern version | For Qdrant vector database |
+| **Docker** | Any modern version | For Pinecone vector database |
 | **Ollama** | Latest | Must be running locally with models pulled |
 
 ## Dependencies
@@ -22,7 +22,7 @@ arxiv==2.1.3             requests==2.32.3         pymupdf==1.25.5
 sqlalchemy==2.0.41       alembic==1.15.2          numpy==2.2.6
 langchain==0.3.25        langchain-ollama==0.3.3  ollama==0.5.1
 rapidfuzz==3.13.0        python-dotenv==1.1.0     click==8.2.1
-tqdm==4.67.1             qdrant-client==1.18.0
+tqdm==4.67.1             pinecone-client==1.18.0
 ```
 
 ### Frontend (`dashboard/package.json`)
@@ -53,10 +53,10 @@ Create `.env` by copying `.env.example`:
 | `RERANK_WEIGHT_COSINE` | `0.6` | Cosine weight in rerank blend |
 | `RERANK_WEIGHT_BM25` | `0.4` | BM25 weight in rerank blend |
 | `DEDUP_THRESHOLD` | `0.85` | Min fuzzy score to consider a duplicate |
-| `QDRANT_HOST` | `localhost` | Qdrant server host |
-| `QDRANT_PORT` | `6333` | Qdrant REST API port |
-| `QDRANT_GRPC_PORT` | `6334` | Qdrant gRPC API port |
-| `QDRANT_COLLECTION` | `papers` | Qdrant collection name |
+| `QDRANT_HOST` | `localhost` | Pinecone server host |
+| `QDRANT_PORT` | `6333` | Pinecone REST API port |
+| `QDRANT_GRPC_PORT` | `6334` | Pinecone gRPC API port |
+| `QDRANT_COLLECTION` | `papers` | Pinecone collection name |
 | `QDRANT_EMBED_DIMENSION` | `768` | Embedding vector dimension |
 | `APP_HOST` | `127.0.0.1` | Dashboard host |
 | `APP_PORT` | `8000` | Dashboard port |
@@ -87,7 +87,7 @@ pip install -r requirements.txt
 cp .env.example .env
 # Edit .env if needed
 
-# Start Qdrant
+# Start Pinecone
 docker compose up -d
 
 # Pull Ollama models
@@ -138,7 +138,7 @@ pnpm dev
 python -m pytest tests/ -v
 ```
 
-Tests use in-memory SQLite with FTS5 and mock all external services (Ollama, Qdrant, arXiv, HTTP).
+Tests use in-memory SQLite with FTS5 and mock all external services (Ollama, Pinecone, arXiv, HTTP).
 
 ## Project Structure
 
@@ -147,7 +147,7 @@ auto-researcher/
 ├── run.py                  # CLI entry point (Click commands)
 ├── requirements.txt        # Python dependencies
 ├── .env.example            # Environment variable template
-├── docker-compose.yml      # Qdrant vector database
+├── docker-compose.yml      # Pinecone vector database
 ├── alembic.ini             # Alembic migration config
 ├── data/                   # Runtime data (DB, PDFs, reports, cache)
 ├── migrations/             # Alembic migrations
@@ -158,7 +158,7 @@ auto-researcher/
 │   ├── main.py             # FastAPI app factory
 │   ├── models/paper.py     # Paper, Report, PipelineRun models
 │   ├── ingestion/          # arXiv fetch + PDF text extraction
-│   ├── classification/     # Embeddings + classification + dedup + Qdrant
+│   ├── classification/     # Embeddings + classification + dedup + Pinecone
 │   ├── reports/            # LLM report generation
 │   └── dashboard/routes.py # FastAPI API endpoints
 └── dashboard/
@@ -181,8 +181,8 @@ auto-researcher/
 ## Pipeline Flow
 
 1. **Ingest** — Searches arXiv by category+keyword, downloads PDFs, extracts text (pymupdf), stores in SQLite, populates FTS5
-2. **Dedup** — O(n²) fuzzy title matching (rapidfuzz) removes duplicates, cleans Qdrant/FTS orphans
-3. **Classify** — Generates embeddings (`nomic-embed-text-v2-moe`), dual-writes to SQLite+Qdrant. Hybrid RRF classification: dense cosine + BM25 via FTS5
+2. **Dedup** — O(n²) fuzzy title matching (rapidfuzz) removes duplicates, cleans Pinecone/FTS orphans
+3. **Classify** — Generates embeddings (`nomic-embed-text-v2-moe`), dual-writes to SQLite+Pinecone. Hybrid RRF classification: dense cosine + BM25 via FTS5
 4. **Report** — Groups papers by bucket. Per-paper summaries (light model), per-bucket summaries + cross-domain synthesis (heavy model). LLM cache + token cap
 
 ## Database Migrations
@@ -200,7 +200,7 @@ alembic revision --autogenerate -m "description of change"
 | Decision | Detail |
 |---|---|
 | **Database** | SQLite (`data/auto_researcher.db`) with FTS5 for BM25 keyword search |
-| **Vector DB** | Qdrant via Docker, dual-writes with SQLite |
+| **Vector DB** | Pinecone via Docker, dual-writes with SQLite |
 | **Embeddings** | 768-dim from `nomic-embed-text-v2-moe` via Ollama |
 | **LLM Routing** | Lazy-init: `_get_llm_light()` and `_get_llm_heavy()` |
 | **LLM Caching** | SHA-256 keyed responses to `data/llm_cache.json` |

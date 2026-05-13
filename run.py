@@ -98,10 +98,10 @@ def run_pipeline(max_results, period, query, bucket):
 
 @cli.command()
 def resync():
-    """Re-sync embeddings from SQLite to Qdrant (recover from dual-write drift)."""
-    from app.classification.qdrant_store import resync_embeddings
+    """Re-sync embeddings from SQLite to Pinecone (recover from dual-write drift)."""
+    from app.classification.pinecone_store import resync_embeddings
     count = resync_embeddings()
-    click.echo(f"Re-synced {count} papers from SQLite to Qdrant")
+    click.echo(f"Re-synced {count} papers from SQLite to Pinecone")
 
 
 @cli.command()

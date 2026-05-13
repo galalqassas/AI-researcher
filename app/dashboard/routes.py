@@ -134,12 +134,12 @@ async def trigger_report(period: str = "7d"):
 
 @router.get("/search", response_class=JSONResponse)
 async def search_papers(q: str = Query(..., min_length=1), limit: int = Query(default=10, ge=1, le=50)):
-    """Hybrid search: embeds the query, searches Qdrant + FTS5, merges via RRF."""
+    """Hybrid search: embeds the query, searches Pinecone + FTS5, merges via RRF."""
     from app.classification.embedder import get_embedding
-    from app.classification.qdrant_store import search_similar
+    from app.classification.pinecone_store import search_similar
     from app.classification.classifier import _bm25_search, RRF_K
 
-    # Dense search via Qdrant
+    # Dense search via Pinecone
     query_vec = get_embedding(q)
     scores: dict[int, float] = {}
     if query_vec is not None:

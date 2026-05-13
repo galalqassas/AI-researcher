@@ -1,7 +1,7 @@
 """Shared fixtures for Auto-Researcher tests.
 
 Uses in-memory SQLite with FTS5 for DB-dependent tests.
-External services (Ollama, Qdrant, arXiv, HTTP) are mocked per-test.
+External services (Ollama, Pinecone, arXiv, HTTP) are mocked per-test.
 """
 
 import json

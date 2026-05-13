@@ -109,7 +109,7 @@ class TestClassifyAllPapers:
         classify_session.add(paper)
         classify_session.commit()
         with patch("app.classification.classifier.compute_bucket_embeddings", return_value={}), \
-             patch("app.classification.classifier.get_session", return_value=classify_session):
+             patch("app.classification.classifier.Session", return_value=classify_session):
             assert classify_all_papers() == 0
 
     def test_assigns_buckets_to_papers(self, classify_engine, classify_session):
@@ -123,7 +123,7 @@ class TestClassifyAllPapers:
         bucket_embeds = {"general_ai": emb, "autonomous_agents": np.zeros(768, dtype=np.float32),
                          "ai_finance": np.zeros(768, dtype=np.float32)}
         with patch("app.classification.classifier.compute_bucket_embeddings", return_value=bucket_embeds), \
-             patch("app.classification.classifier.get_session", return_value=classify_session), \
+             patch("app.classification.classifier.Session", return_value=classify_session), \
              patch("app.classification.classifier._bm25_search", return_value=[]), \
              patch("app.classification.classifier.get_collection_info", return_value=None):
             assert classify_all_papers() == 1

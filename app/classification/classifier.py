@@ -8,8 +8,8 @@ from tqdm import tqdm
 from sqlalchemy import text
 from app.config import SIMILARITY_THRESHOLD, RRF_K, RERANK_MARGIN, RERANK_WEIGHT_COSINE, RERANK_WEIGHT_BM25
 from app.classification.embedder import get_embedding, bytes_to_embed
-from app.classification.qdrant_store import get_collection_info
-from app.database import get_session, engine
+from app.classification.pinecone_store import get_collection_info
+from app.database import get_session, engine, Session
 from app.models.paper import Paper
 
 log = logging.getLogger(__name__)
@@ -115,7 +115,7 @@ def _bm25_search(query: str, limit: int = 200) -> list[tuple[int, float]]:
 
 def classify_all_papers():
     """Classify all embedded papers into research buckets using hybrid RRF."""
-    session = get_session()
+    session = Session()
     papers = session.query(Paper).filter(Paper.embedding != None).all()
     log.info(f"Classifying {len(papers)} papers")
 
@@ -125,10 +125,10 @@ def classify_all_papers():
         session.close()
         return 0
 
-    qdrant_info = get_collection_info()
-    qdrant_available = qdrant_info is not None and qdrant_info["points_count"] > 0
-    if qdrant_available:
-        log.info(f"Qdrant has {qdrant_info['points_count']} vectors indexed")
+    pinecone_info = get_collection_info()
+    pinecone_available = pinecone_info is not None and pinecone_info["points_count"] > 0
+    if pinecone_available:
+        log.info(f"Pinecone has {pinecone_info['points_count']} vectors indexed")
 
     # BM25 search per bucket description keywords for hybrid ranking
     bm25_rank_per_bucket: dict[str, dict[int, int]] = {}

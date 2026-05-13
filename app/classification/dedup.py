@@ -5,7 +5,7 @@ from sqlalchemy import text
 from app.database import get_session, engine
 from app.models.paper import Paper
 from app.config import DEDUP_THRESHOLD
-from app.classification.qdrant_store import delete_points
+from app.classification.pinecone_store import delete_points
 
 log = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ def find_duplicates(session) -> list[tuple[int, int, float]]:
 
 def deduplicate(session=None) -> int:
     """Remove duplicate papers, keeping the one with more content (longer full_text).
-    Also removes orphan vectors from Qdrant and stale FTS rows. Returns number of papers removed."""
+    Also removes orphan vectors from Pinecone and stale FTS rows. Returns number of papers removed."""
     own_session = session is None
     if own_session:
         session = get_session()
@@ -62,11 +62,11 @@ def deduplicate(session=None) -> int:
             except Exception as e:
                 log.warning(f"Failed to clean FTS index for {len(orphan_ids)} removed papers: {e}")
 
-            # Clean up Qdrant vectors for removed papers
+            # Clean up Pinecone vectors for removed papers
             try:
                 delete_points(orphan_ids)
             except Exception as e:
-                log.warning(f"Failed to delete {len(orphan_ids)} orphan vectors from Qdrant: {e}")
+                log.warning(f"Failed to delete {len(orphan_ids)} orphan vectors from Pinecone: {e}")
 
         return removed
     except Exception:
