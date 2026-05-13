@@ -28,50 +28,47 @@ def find_duplicates(session) -> list[tuple[int, int, float]]:
 def deduplicate(session=None) -> int:
     """Remove duplicate papers, keeping the one with more content (longer full_text).
     Also removes orphan vectors from Pinecone and stale FTS rows. Returns number of papers removed."""
-    own_session = session is None
-    if own_session:
-        session = get_session()
+    if session is not None:
+        return _deduplicate_core(session)
 
-    try:
-        duplicates = find_duplicates(session)
-        removed = 0
-        orphan_ids = []
+    with get_session() as session:
+        return _deduplicate_core(session)
 
-        for id1, id2, score in duplicates:
-            p1 = session.get(Paper, id1)
-            p2 = session.get(Paper, id2)
-            if not p1 or not p2:
-                continue
 
-            keep, drop = (p1, p2) if len(p1.full_text or "") >= len(p2.full_text or "") else (p2, p1)
-            log.info(f"Duplicate (score={score:.2f}): keeping '{keep.title[:50]}', removing '{drop.title[:50]}'")
-            orphan_ids.append(drop.id)
-            session.delete(drop)
-            removed += 1
+def _deduplicate_core(session) -> int:
+    duplicates = find_duplicates(session)
+    removed = 0
+    orphan_ids = []
 
-        session.commit()
+    for id1, id2, score in duplicates:
+        p1 = session.get(Paper, id1)
+        p2 = session.get(Paper, id2)
+        if not p1 or not p2:
+            continue
 
-        if orphan_ids:
-            # Clean up FTS index for removed papers
-            try:
-                with engine.connect() as conn:
-                    placeholders = ",".join(f":id{i}" for i in range(len(orphan_ids)))
-                    params = {f"id{i}": pid for i, pid in enumerate(orphan_ids)}
-                    conn.execute(text(f"DELETE FROM papers_fts WHERE rowid IN ({placeholders})"), params)
-                    conn.commit()
-            except Exception as e:
-                log.warning(f"Failed to clean FTS index for {len(orphan_ids)} removed papers: {e}")
+        keep, drop = (p1, p2) if len(p1.full_text or "") >= len(p2.full_text or "") else (p2, p1)
+        log.info(f"Duplicate (score={score:.2f}): keeping '{keep.title[:50]}', removing '{drop.title[:50]}'")
+        orphan_ids.append(drop.id)
+        session.delete(drop)
+        removed += 1
 
-            # Clean up Pinecone vectors for removed papers
-            try:
-                delete_points(orphan_ids)
-            except Exception as e:
-                log.warning(f"Failed to delete {len(orphan_ids)} orphan vectors from Pinecone: {e}")
+    session.commit()
 
-        return removed
-    except Exception:
-        session.rollback()
-        raise
-    finally:
-        if own_session:
-            session.close()
+    if orphan_ids:
+        # Clean up FTS index for removed papers
+        try:
+            with engine.connect() as conn:
+                placeholders = ",".join(f":id{i}" for i in range(len(orphan_ids)))
+                params = {f"id{i}": pid for i, pid in enumerate(orphan_ids)}
+                conn.execute(text(f"DELETE FROM papers_fts WHERE rowid IN ({placeholders})"), params)
+                conn.commit()
+        except Exception as e:
+            log.warning(f"Failed to clean FTS index for {len(orphan_ids)} removed papers: {e}")
+
+        # Clean up Pinecone vectors for removed papers
+        try:
+            delete_points(orphan_ids)
+        except Exception as e:
+            log.warning(f"Failed to delete {len(orphan_ids)} orphan vectors from Pinecone: {e}")
+
+    return removed
