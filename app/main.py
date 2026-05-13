@@ -12,10 +12,14 @@ def create_app() -> FastAPI:
     init_db()
     app = FastAPI(title="Auto-Researcher", version="0.1.0")
 
-    # CORS — allow all origins in dev; tighten for production
+    # CORS — allow frontend origins
+    origins = [
+        "https://ai-research-mvp.vercel.app",
+        "http://localhost:5173",
+    ]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

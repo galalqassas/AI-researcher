@@ -2,7 +2,10 @@ const API_BASE = import.meta.env.VITE_API_URL || '';
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'ngrok-skip-browser-warning': '1',
+    },
     ...init,
   });
   if (!res.ok) {
