@@ -5,7 +5,7 @@ import numpy as np
 from pathlib import Path
 from tqdm import tqdm
 from sqlalchemy import text
-from app.config import SIMILARITY_THRESHOLD, RRF_K
+from app.config import SIMILARITY_THRESHOLD, RRF_K, RERANK_MARGIN, RERANK_WEIGHT_COSINE, RERANK_WEIGHT_BM25
 from app.classification.embedder import get_embedding, bytes_to_embed
 from app.classification.qdrant_store import get_collection_info
 from app.database import Session, engine
@@ -114,11 +114,13 @@ def classify_all_papers():
         log.info(f"Qdrant has {qdrant_info['points_count']} vectors indexed")
 
     # BM25 search per bucket description keywords for hybrid ranking
-    bm25_per_bucket: dict[str, dict[int, float]] = {}
+    bm25_rank_per_bucket: dict[str, dict[int, int]] = {}  # pre-computed rank per bucket
     paper_ids_in_bm25: set[int] = set()
     for bucket, desc in BUCKET_DESCRIPTIONS.items():
         hits = _bm25_search(desc, limit=200)
-        bm25_per_bucket[bucket] = {pid: score for pid, score in hits}
+        # Pre-sort: ascending by score (most negative = most relevant = rank 0)
+        sorted_hits = sorted(hits, key=lambda x: x[1])
+        bm25_rank_per_bucket[bucket] = {pid: rank for rank, (pid, _) in enumerate(sorted_hits)}
         paper_ids_in_bm25.update(pid for pid, _ in hits)
 
     for paper in tqdm(papers, desc="Classifying"):
@@ -144,18 +146,25 @@ def classify_all_papers():
                 # Dense rank contribution
                 if bucket in dense_rank_map:
                     rrf_score += 1.0 / (RRF_K + dense_rank_map[bucket] + 1)
-                # BM25 rank contribution (scores are negative: more negative = more relevant)
-                bucket_bm25 = bm25_per_bucket.get(bucket, {})
-                if paper.id in bucket_bm25:
-                    bm25_ranked = sorted(bucket_bm25.items(), key=lambda x: x[1])  # ascending: most negative first
-                    for rank, (pid, _) in enumerate(bm25_ranked):
-                        if pid == paper.id:
-                            rrf_score += 1.0 / (RRF_K + rank + 1)
-                            break
+                # BM25 rank contribution (pre-computed per bucket)
+                bucket_bm25_ranks = bm25_rank_per_bucket.get(bucket, {})
+                if paper.id in bucket_bm25_ranks:
+                    rrf_score += 1.0 / (RRF_K + bucket_bm25_ranks[paper.id] + 1)
                 final_scores[bucket] = rrf_score
 
-            # Use dense threshold for primary assignment, RRF for fallback
+            # Use dense threshold for primary assignment
+            # Rerank borderline papers (within RERANK_MARGIN below threshold) with blended score
             matched = [b for b, s in dense_scores.items() if s >= SIMILARITY_THRESHOLD]
+            borderline = [b for b, s in dense_scores.items()
+                          if SIMILARITY_THRESHOLD - RERANK_MARGIN <= s < SIMILARITY_THRESHOLD]
+            if borderline and final_scores:
+                for b in borderline:
+                    cos_score = dense_scores.get(b, 0)
+                    bm25_rank_score = final_scores.get(b, 0)
+                    blended = RERANK_WEIGHT_COSINE * cos_score + RERANK_WEIGHT_BM25 * bm25_rank_score
+                    if blended >= SIMILARITY_THRESHOLD * 0.8 and b not in matched:
+                        matched.append(b)
+                        log.debug(f"Reranked {paper.arxiv_id} into {b}: cosine={cos_score:.3f} rrf={bm25_rank_score:.4f} blended={blended:.4f}")
             if not matched:
                 matched = [max(final_scores, key=final_scores.get)]
         else:
