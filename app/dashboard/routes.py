@@ -1,10 +1,78 @@
 import json
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
+from datetime import datetime, timezone
+from sqlalchemy import func
 from app.database import Session
 from app.models.paper import Paper, Report, PipelineRun
+from app.config import BUCKETS
 
 router = APIRouter()
+
+
+@router.get("/papers")
+async def list_papers(
+    bucket: str = Query(default=None, description="Filter by bucket key"),
+    page: int = Query(default=1, ge=1, description="Page number"),
+    limit: int = Query(default=50, ge=1, le=200, description="Results per page"),
+):
+    """List papers with optional bucket filter and pagination."""
+    db = Session()
+    query = db.query(Paper)
+    if bucket and bucket in BUCKETS:
+        query = query.filter(Paper.buckets.contains(f'"{bucket}"'))
+    total = query.count()
+    papers = query.order_by(Paper.ingested_at.desc()).offset((page - 1) * limit).limit(limit).all()
+    db.close()
+    return JSONResponse({
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "results": [{
+            "id": p.id,
+            "arxiv_id": p.arxiv_id,
+            "title": p.title,
+            "authors": p.authors,
+            "abstract": p.abstract,
+            "published_date": str(p.published_date) if p.published_date else None,
+            "ingested_at": str(p.ingested_at) if p.ingested_at else None,
+            "buckets": json.loads(p.buckets) if p.buckets else [],
+        } for p in papers],
+    })
+
+
+@router.get("/papers/stats")
+async def paper_stats():
+    """Paper counts: total, per bucket, and per month for charts."""
+    db = Session()
+    total = db.query(Paper).count()
+    per_bucket = {}
+    for bucket_key in BUCKETS:
+        per_bucket[bucket_key] = db.query(Paper).filter(
+            Paper.buckets.contains(f'"{bucket_key}"')
+        ).count()
+    # Per-month aggregation for charts
+    per_date_rows = db.query(
+        func.strftime("%Y-%m", Paper.ingested_at).label("month"),
+        func.count(Paper.id).label("count"),
+    ).filter(Paper.ingested_at.isnot(None)).group_by("month").order_by("month").all()
+    # Also get per-month per-bucket counts
+    per_date = []
+    for month, count in per_date_rows:
+        bucket_counts = {}
+        for bk in BUCKETS:
+            bucket_counts[bk] = db.query(Paper).filter(
+                Paper.ingested_at.isnot(None),
+                func.strftime("%Y-%m", Paper.ingested_at) == month,
+                Paper.buckets.contains(f'"{bk}"'),
+            ).count()
+        per_date.append({"month": month, "count": count, **bucket_counts})
+    db.close()
+    return JSONResponse({
+        "total": total,
+        "per_bucket": per_bucket,
+        "per_date": per_date,
+    })
 
 
 @router.post("/ingest")
@@ -51,7 +119,7 @@ async def trigger_report(period: str = "7d"):
         with track_pipeline("report") as ctx:
             result = generate_report(period)
             if "error" in result:
-                return JSONResponse({"error": result["error"]}, status_code=500)
+                return JSONResponse({"error": result["error"]}, status_code=422)
             ctx["paper_count"] = result.get("papers", 0)
             ctx["stages_json"] = result
     except Exception as exc:

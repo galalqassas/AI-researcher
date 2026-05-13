@@ -105,8 +105,6 @@ def summarize_paper(paper) -> str:
     )
     try:
         return _cached_invoke(_get_llm_light(), prompt)
-    except RuntimeError:
-        raise
     except Exception as e:
         log.error(f"Failed to summarize {paper.arxiv_id}: {e}")
         return f"{paper.title} — (summary unavailable)"
@@ -116,7 +114,8 @@ def format_papers_for_bucket(papers) -> str:
     """Format papers in a bucket as a readable list for the LLM."""
     lines = []
     for p in papers:
-        lines.append(f"- {p.title} ({p.published_date}): {p.abstract[:300]}")
+        abstract_snippet = (p.abstract or "")[:300]
+        lines.append(f"- {p.title} ({p.published_date}): {abstract_snippet}")
     return "\n".join(lines[:20])
 
 
@@ -131,8 +130,6 @@ def summarize_bucket(bucket: str, papers) -> str:
     )
     try:
         return _cached_invoke(_get_llm_heavy(), prompt)
-    except RuntimeError:
-        raise
     except Exception as e:
         log.error(f"Failed to summarize bucket {bucket}: {e}")
         return f"Summary generation failed for {bucket}."
@@ -147,8 +144,6 @@ def generate_cross_synthesis(summaries: dict) -> str:
     )
     try:
         return _cached_invoke(_get_llm_heavy(), prompt)
-    except RuntimeError:
-        raise
     except Exception as e:
         log.error(f"Cross-bucket synthesis failed: {e}")
         return "Cross-domain synthesis unavailable."
@@ -212,8 +207,6 @@ def generate_report(period: str) -> dict:
             if not hasattr(p, '_summary'):
                 try:
                     p._summary = summarize_paper(p)
-                except RuntimeError:
-                    raise
                 except Exception:
                     p._summary = None
 
@@ -224,8 +217,6 @@ def generate_report(period: str) -> dict:
             log.info(f"Summarizing bucket '{bucket}' ({len(bp)} papers)...")
             try:
                 summaries[bucket] = summarize_bucket(bucket, bp)
-            except RuntimeError:
-                raise
             except Exception as e:
                 log.error(f"Bucket summary failed for {bucket}: {e}")
                 summaries[bucket] = f"Summary generation failed for {bucket}."
@@ -234,13 +225,15 @@ def generate_report(period: str) -> dict:
         log.info("Generating cross-domain synthesis...")
         try:
             cross_synthesis = generate_cross_synthesis(summaries)
-        except RuntimeError:
-            raise
         except Exception as e:
             log.error(f"Cross-domain synthesis failed: {e}")
             cross_synthesis = "Cross-domain synthesis unavailable."
 
-        content_html = build_html_report(summaries, cross_synthesis, papers_by_bucket, period)
+        try:
+            content_html = build_html_report(summaries, cross_synthesis, papers_by_bucket, period)
+        except Exception as e:
+            log.error(f"HTML build failed: {e}")
+            content_html = f"<h1>Report Generation Error</h1><p>Partial data was collected but HTML rendering failed: {e}</p>"
 
         report = Report(
             period=period,
