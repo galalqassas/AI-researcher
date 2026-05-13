@@ -12,8 +12,8 @@ All five pipeline stages have been tested end-to-end with real data:
 |---|---|---|
 | **Ingest** | ✅ Working | Papers fetched from 3 arXiv buckets, PDFs downloaded, text extracted |
 | **Dedup** | ✅ Working | Fuzzy title matching removes duplicates, keeps longer content; orphans cleaned from Qdrant |
-| **Classify** | ✅ Working | Embeddings via `nomic-embed-text-v2-moe`, stored in Qdrant, cosine similarity bucket assignment |
-| **Report** | ✅ Working | Per-bucket summaries + cross-domain synthesis via `gemma4:31b-cloud` |
+| **Classify** | ✅ Working | Embeddings via `nomic-embed-text-v2-moe`, stored in Qdrant, hybrid RRF classification (dense cosine + BM25 via FTS5) |
+| **Report** | ✅ Working | Per-bucket summaries + cross-domain synthesis via `gemma4:31b-cloud`, per-paper summaries via `gemma3:4b`, LLM responses cached |
 | **Dashboard** | ✅ Working | All endpoints (GET `/`, `/reports`, `/reports/{id}`; POST `/ingest`, `/reports/generate`) returning 200 |
 
 ## Tech Stack
@@ -22,7 +22,7 @@ All five pipeline stages have been tested end-to-end with real data:
 - **Web Framework:** FastAPI + Uvicorn
 - **Database:** SQLAlchemy with SQLite (`data/auto_researcher.db`)
 - **Vector Database:** Qdrant (Docker, `qdrant-client==1.18.0`)
-- **LLM:** Ollama — `gemma4:31b-cloud` (reports), `nomic-embed-text-v2-moe` (embeddings)
+- **LLM:** Ollama — `gemma4:31b-cloud` (heavy tasks), `gemma3:4b` (light tasks), `nomic-embed-text-v2-moe` (embeddings)
 - **LLM Orchestration:** LangChain (`langchain-ollama`)
 - **PDF Processing:** pymupdf (fitz)
 - **ML:** numpy (cosine similarity)
@@ -42,13 +42,15 @@ auto-researcher/
 ├── .env                    # Local environment (gitignored)
 ├── data/
 │   ├── pdfs/               # Downloaded PDFs (gitignored)
+│   ├── llm_cache.json       # LLM response cache (gitignored)
+│   ├── bucket_embeddings.json # Cached bucket description embeddings (gitignored)
 │   └── reports/            # Generated reports (gitignored)
 ├── migrations/             # Alembic migrations (empty, not configured)
 ├── tests/                  # Test suite (empty)
 ├── app/
 │   ├── __init__.py
 │   ├── config.py           # All settings from .env + bucket definitions
-│   ├── database.py         # SQLAlchemy engine, session, Base
+│   ├── database.py         # SQLAlchemy engine, session, Base, FTS5 index management
 │   ├── main.py             # FastAPI app factory (create_app)
 │   ├── models/
 │   │   ├── __init__.py
@@ -57,16 +59,16 @@ auto-researcher/
 │   │   ├── __init__.py
 │   │   ├── arxiv_client.py # arXiv API search + keyword filtering + client-side date filter
 │   │   ├── pdf_extractor.py # PDF download + text extraction
-│   │   └── pipeline.py     # Orchestrates fetch → extract → store
+│   │   └── pipeline.py     # Orchestrates fetch → extract → store → FTS index update
 │   ├── classification/
 │   │   ├── __init__.py
 │   │   ├── embedder.py     # Ollama embedding generation + dual-write (SQLite + Qdrant)
-│   │   ├── classifier.py   # Bucket assignment via cosine similarity
+│   │   ├── classifier.py   # Hybrid RRF classification (dense cosine + BM25)
 │   │   ├── qdrant_store.py # Qdrant client: collection management, upsert, search, delete
 │   │   └── dedup.py        # Fuzzy deduplication (rapidfuzz) + Qdrant orphan cleanup
 │   ├── reports/
 │   │   ├── __init__.py
-│   │   ├── generator.py    # LangChain + Ollama report generation
+│   │   ├── generator.py    # LangChain + Ollama report generation (tiered models + cache + cap)
 │   │   └── prompts.py     # LLM prompt templates
 │   ├── dashboard/
 │   │   ├── __init__.py
@@ -86,28 +88,31 @@ All commands run via `python run.py`:
 | `python run.py ingest --query "cat:cs.AI"` | Fetch with extra query filter (combined with bucket filters via AND) |
 | `python run.py dedup` | Remove duplicate papers via fuzzy title matching + clean Qdrant orphans |
 | `python run.py classify` | Embed and classify papers into buckets (requires Ollama + Qdrant) |
-| `python run.py report --period 7d` | Generate report (periods: 7d, 1m, 3m, 6m, 1y) |
+| `python run.py report --period 7d` | Generate report (periods: 7d, 6m, 1y) |
 | `python run.py serve [--host] [--port]` | Start dashboard server (default: 127.0.0.1:8000) |
 
 **Note:** The `--query` flag does NOT replace bucket filters — it adds an additional AND clause. The full query becomes `bucket_categories AND bucket_keywords AND user_query`.
 
 ## Pipeline Flow
 
-1. **Ingest** — Searches arXiv by category+keyword (sorted by relevance, filtered client-side for date), downloads PDFs, extracts text via pymupdf, stores in SQLite
+1. **Ingest** — Searches arXiv by category+keyword (sorted by relevance, filtered client-side for date), downloads PDFs, extracts text via pymupdf, stores in SQLite, populates FTS5 index
 2. **Dedup** — O(n²) fuzzy title matching via `rapidfuzz.fuzz.ratio()`, removes duplicates keeping the paper with longer `full_text`. Also deletes orphan vectors from Qdrant.
-3. **Classify** — Generates embeddings via `nomic-embed-text-v2-moe`, dual-writes to both SQLite (LargeBinary) and Qdrant. Computes cosine similarity against bucket descriptions, assigns papers to matching buckets (threshold ≥ 0.35). Papers with no bucket above threshold fall back to the single highest-scoring bucket.
-4. **Report** — Groups papers by bucket, generates per-bucket summaries (~500 words each) + cross-domain synthesis (~300 words) via `gemma4:31b-cloud`, stores HTML report in DB. Does NOT use Qdrant — reads paper metadata from SQLite only.
+3. **Classify** — Generates embeddings via `nomic-embed-text-v2-moe`, dual-writes to both SQLite (LargeBinary) and Qdrant. Uses **hybrid RRF classification**: dense cosine similarity ranked against bucket embeddings + BM25 keyword search via FTS5, merged via Reciprocal Rank Fusion (`1/(k+dense_rank) + 1/(k+bm25_rank)`, default `k=60`). Falls back to pure cosine if no BM25 results. Bucket description embeddings are cached to `data/bucket_embeddings.json`.
+4. **Report** — Groups papers by bucket, generates per-bucket summaries (~500 words each) via `gemma4:31b-cloud` (heavy model) + cross-domain synthesis (~300 words) + per-paper summaries via `gemma3:4b` (light model). LLM responses are cached to `data/llm_cache.json` keyed on prompt hash. Token usage is tracked per run and capped by `OLLAMA_MAX_TOKENS_PER_RUN` (0 = unlimited).
 
 ## Configuration (.env)
 
 | Variable | Default | Description |
 |---|---|---|
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
-| `OLLAMA_MODEL` | `gemma4:31b-cloud` | LLM model for reports |
+| `OLLAMA_MODEL` | `gemma4:31b-cloud` | LLM model for heavy tasks (bucket summaries, synthesis) |
+| `OLLAMA_MODEL_LIGHT` | `gemma3:4b` | LLM model for light tasks (per-paper summaries) |
+| `OLLAMA_MAX_TOKENS_PER_RUN` | `0` | Max estimated tokens per report run (0 = unlimited) |
 | `OLLAMA_EMBED_MODEL` | `nomic-embed-text-v2-moe` | Embedding model |
 | `ARXIV_FROM_DATE` | `2020-01-01` | Only fetch papers published on or after this date (client-side filter) |
 | `ARXIV_MAX_RESULTS` | `2` | Max papers per bucket |
 | `SIMILARITY_THRESHOLD` | `0.35` | Min cosine similarity for bucket assignment |
+| `RRF_K` | `60` | Reciprocal Rank Fusion constant for hybrid classification |
 | `DEDUP_THRESHOLD` | `0.85` | Min fuzzy score to consider duplicate |
 | `QDRANT_HOST` | `localhost` | Qdrant server host |
 | `QDRANT_PORT` | `6333` | Qdrant REST API port |
@@ -121,6 +126,7 @@ All commands run via `python run.py`:
 
 - **Paper** (`papers` table): id, arxiv_id (unique), title, authors (nullable), abstract (nullable), full_text (nullable), pdf_url (nullable), published_date (nullable Date), ingested_at (nullable DateTime), buckets (nullable JSON string), embedding (nullable LargeBinary — also synced to Qdrant)
 - **Report** (`reports` table): id, period (String 10), generated_at (DateTime), content_html (Text), paper_count (Integer)
+- **papers_fts** (FTS5 virtual table): rowid (= paper id), title, abstract — used for BM25 keyword search in hybrid classification. Created automatically by `init_db()`, populated on ingestion, and can be rebuilt via `rebuild_fts()`
 
 ## Qdrant Vector Database
 
@@ -144,6 +150,11 @@ All commands run via `python run.py`:
 - LLM prompts stored as constants in `app/reports/prompts.py`
 - HTML templates use Jinja2 with a `base.html` layout
 - Cosine similarity implemented in numpy (not scikit-learn — the dependency is unused)
+- LLM calls use tiered model routing: `llm_light` (`OLLAMA_MODEL_LIGHT` = `gemma3:4b`) for per-paper summaries, `llm_heavy` (`OLLAMA_MODEL` = `gemma4:31b-cloud`) for bucket summaries and cross-domain synthesis
+- LLM responses are cached to `data/llm_cache.json` keyed on SHA-256 hash of `model:prompt`. Cache persists across runs. Token usage is tracked per run via global `_tokens_used` and capped by `OLLAMA_MAX_TOKENS_PER_RUN` (0 = unlimited).
+- Token estimation uses `len(text.split())` — a rough approximation, not exact tokenization
+- Bucket description embeddings are cached to `data/bucket_embeddings.json` to avoid recomputing on each classification run
+- FTS5 virtual table `papers_fts` is used for BM25 keyword search during hybrid classification. It is populated during ingestion and can be rebuilt via `rebuild_fts()` in `database.py`.
 
 ## Known Issues
 
@@ -152,7 +163,10 @@ All commands run via `python run.py`:
 | O(n²) deduplication | Medium | `dedup.py` compares every pair of papers. Will be slow for large databases. |
 | Dashboard routes block synchronously | Medium | `POST /ingest` and `POST /reports/generate` block the server for the full pipeline duration with no user feedback. |
 | Unused dependencies | Low | `feedparser` and `dateparser` are in `requirements.txt` but never imported. |
-| LLM instantiated at module level | Low | `generator.py` creates `OllamaLLM(model=OLLAMA_MODEL)` at import time. No graceful fallback if Ollama is unavailable. |
+| LLM instantiated at module level | Low | `generator.py` creates `OllamaLLM` instances at import time. No graceful fallback if Ollama is unavailable. |
+| Report period mismatch | Medium | `run.py` CLI offers 5 periods (`7d, 1m, 3m, 6m, 1y`) but `generate_report()` only accepts 3 (`7d, 6m, 1y` per `REPORT_PERIODS`). Selecting `1m` or `3m` raises `ValueError`. **Note:** CLI was fixed to only offer valid periods, but `PERIOD_DAYS` in `generator.py` has no entries for `1m`/`3m` either — extend both if more periods are needed. |
+| FTS index can drift | Low | Dedup now cleans FTS rows, but direct DB edits bypass FTS. `rebuild_fts()` in `database.py` can manually rebuild if drift occurs. |
+| Bucket embedding cache staleness | Low | `data/bucket_embeddings.json` is never invalidated. If `BUCKET_DESCRIPTIONS` changes in code, the disk cache serves stale vectors. Delete the file manually or add a hash check. |
 | Dual-write sync drift | Medium | If Qdrant upsert fails after SQLite commit, embeddings exist in SQLite but not Qdrant. Next `embed_all_papers()` skips them (they already have `embedding != None`). Manual resync needed via a `qdrant_sync` command (not yet implemented). |
 
 ## Testing
@@ -184,7 +198,8 @@ venv\Scripts\activate              # Windows
 pip install -r requirements.txt
 cp .env.example .env              # Edit .env if needed
 docker compose up -d              # Start Qdrant vector database
-ollama pull gemma4:31b-cloud      # LLM for report generation
+ollama pull gemma4:31b-cloud      # Heavy LLM (bucket summaries, synthesis)
+ollama pull gemma3:4b             # Light LLM (per-paper summaries)
 ollama pull nomic-embed-text-v2-moe # Embedding model (~957MB)
 python run.py serve                # Start dashboard on http://127.0.0.1:8000
 ```

@@ -40,7 +40,7 @@ def classify():
 
 
 @cli.command()
-@click.option("--period", type=click.Choice(["7d", "1m", "3m", "6m", "1y"]), required=True)
+@click.option("--period", type=click.Choice(["7d", "6m", "1y"]), required=True)
 def report(period):
     """Generate a research report for a time period."""
     from app.reports.generator import generate_report
