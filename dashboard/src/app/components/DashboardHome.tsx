@@ -9,7 +9,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import {
-  fetchPapers, fetchPaperStats, fetchPipelineRuns,
+  fetchPapers, fetchPaperStats, fetchPipelineRuns, fetchReports,
   BUCKET_CONFIG, type BucketKey, type PipelineRun, type PaperStats,
 } from '../data/api';
 
@@ -113,13 +113,15 @@ interface DashboardHomeProps {
 export function DashboardHome({ onPapersLoaded }: DashboardHomeProps) {
   const [stats, setStats] = useState<PaperStats | null>(null);
   const [runs, setRuns] = useState<PipelineRun[]>([]);
+  const [reportCount, setReportCount] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([fetchPaperStats(), fetchPipelineRuns(4)])
-      .then(([s, r]) => {
+    Promise.all([fetchPaperStats(), fetchPipelineRuns(4), fetchReports()])
+      .then(([s, r, reports]) => {
         setStats(s);
         setRuns(r);
+        setReportCount(reports.length);
         if (onPapersLoaded) onPapersLoaded(s.total);
       })
       .catch(e => setError(e.message));
@@ -190,7 +192,7 @@ export function DashboardHome({ onPapersLoaded }: DashboardHomeProps) {
         <StatCard label="Latest Month" value={papersToday} sub="papers ingested"
           gradientFrom="#34D399" gradientTo="#059669" shadowColor="#10B981"
           icon={<Zap size={20} color="white" />} />
-        <StatCard label="Reports" value={runs.filter(r => r.name === 'report').length} sub="generated"
+        <StatCard label="Reports" value={reportCount} sub="generated"
           gradientFrom="#FCD34D" gradientTo="#D97706" shadowColor="#F59E0B"
           icon={<FileText size={20} color="white" />} />
         <StatCard label="Pipeline Success" value={`${successRate}%`}

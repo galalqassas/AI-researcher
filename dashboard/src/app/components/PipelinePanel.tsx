@@ -115,7 +115,8 @@ export function PipelinePanel() {
   };
 
   const successRuns = runs.filter(r => r.status === 'success');
-  const totalPapers = successRuns.reduce((s, r) => s + (r.paper_count ?? 0), 0);
+  const ingestRuns = successRuns.filter(r => r.name === 'ingest' || r.name === 'full_pipeline');
+  const totalPapers = ingestRuns.reduce((s, r) => s + (r.paper_count ?? 0), 0);
   const avgDuration = successRuns.reduce((s, r) => s + (r.duration_s ?? 0), 0) / (successRuns.length || 1);
   const successRate = runs.length ? Math.round((successRuns.length / runs.length) * 100) : 0;
   const lastSuccess = successRuns[0];
