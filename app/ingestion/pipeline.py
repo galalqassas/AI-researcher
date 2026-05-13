@@ -3,10 +3,11 @@ import logging
 from datetime import datetime, date, timezone
 from tqdm import tqdm
 from app.config import BUCKETS
-from app.database import Session, init_db
+from app.database import Session, init_db, engine
 from app.models.paper import Paper
 from app.ingestion.arxiv_client import fetch_papers
 from app.ingestion.pdf_extractor import extract_paper_text
+from sqlalchemy import text
 
 log = logging.getLogger(__name__)
 
@@ -37,6 +38,8 @@ def run_ingestion(query=None, max_results=None):
     session = Session()
     added = 0
 
+    new_ids = []
+
     for p in tqdm(papers, desc="Storing papers"):
         existing = session.query(Paper).filter_by(arxiv_id=p["arxiv_id"]).first()
         if existing:
@@ -57,12 +60,28 @@ def run_ingestion(query=None, max_results=None):
             buckets=json.dumps(p.get("buckets", [])),
         )
         session.add(paper)
+        session.flush()  # assign ID before FTS
+        new_ids.append((paper.id, paper.title or "", paper.abstract or ""))
         added += 1
 
         if added % 10 == 0:
             session.commit()
 
     session.commit()
+
+    # Update FTS index with new papers
+    if new_ids:
+        try:
+            with engine.connect() as conn:
+                for pid, title, abstract in new_ids:
+                    conn.execute(
+                        text("INSERT OR REPLACE INTO papers_fts (rowid, title, abstract) VALUES (:id, :title, :abstract)"),
+                        {"id": pid, "title": title, "abstract": abstract}
+                    )
+                conn.commit()
+        except Exception as e:
+            log.warning(f"FTS index update failed: {e}")
+
     session.close()
     log.info(f"Ingestion complete: {added} new papers stored")
     return added

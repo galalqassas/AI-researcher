@@ -17,9 +17,11 @@ env/
 # Database
 *.db
 
-# Downloaded PDFs and reports (generated at runtime)
+# Downloaded PDFs, reports, and caches (generated at runtime)
 data/pdfs/
 data/reports/
+data/llm_cache.json
+data/bucket_embeddings.json
 
 # IDE
 .vscode/

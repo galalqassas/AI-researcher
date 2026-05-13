@@ -1,7 +1,8 @@
 import logging
 from rapidfuzz import fuzz
 from tqdm import tqdm
-from app.database import Session
+from sqlalchemy import text
+from app.database import Session, engine
 from app.models.paper import Paper
 from app.config import DEDUP_THRESHOLD
 from app.classification.qdrant_store import delete_points
@@ -29,7 +30,7 @@ def find_duplicates(session=None) -> list[tuple[int, int, float]]:
 
 def deduplicate(session=None) -> int:
     """Remove duplicate papers, keeping the one with more content (longer full_text).
-    Also removes orphan vectors from Qdrant. Returns number of papers removed."""
+    Also removes orphan vectors from Qdrant and stale FTS rows. Returns number of papers removed."""
     if session is None:
         session = Session()
 
@@ -52,6 +53,17 @@ def deduplicate(session=None) -> int:
     session.commit()
 
     if orphan_ids:
+        # Clean up FTS index for removed papers
+        try:
+            with engine.connect() as conn:
+                placeholders = ",".join(f":id{i}" for i in range(len(orphan_ids)))
+                params = {f"id{i}": pid for i, pid in enumerate(orphan_ids)}
+                conn.execute(text(f"DELETE FROM papers_fts WHERE rowid IN ({placeholders})"), params)
+                conn.commit()
+        except Exception as e:
+            log.warning(f"Failed to clean FTS index for {len(orphan_ids)} removed papers: {e}")
+
+        # Clean up Qdrant vectors for removed papers
         try:
             delete_points(orphan_ids)
         except Exception as e:

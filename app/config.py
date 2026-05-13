@@ -12,6 +12,8 @@ DB_PATH = DATA_DIR / "auto_researcher.db"
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4:31b-cloud")
+OLLAMA_MODEL_LIGHT = os.getenv("OLLAMA_MODEL_LIGHT", "gemma4:31b-cloud")
+OLLAMA_MAX_TOKENS_PER_RUN = int(os.getenv("OLLAMA_MAX_TOKENS_PER_RUN", "0"))
 OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text-v2-moe")
 
 ARXIV_FROM_DATE = os.getenv("ARXIV_FROM_DATE", "2020-01-01")
@@ -44,6 +46,7 @@ ARXIV_KEYWORDS = {
 }
 
 SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.35"))
+RRF_K = int(os.getenv("RRF_K", "60"))
 DEDUP_THRESHOLD = float(os.getenv("DEDUP_THRESHOLD", "0.85"))
 APP_HOST = os.getenv("APP_HOST", "127.0.0.1")
 APP_PORT = int(os.getenv("APP_PORT", "8000"))
