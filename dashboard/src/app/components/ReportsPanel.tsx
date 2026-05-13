@@ -1,8 +1,13 @@
 import { useState, useEffect } from 'react';
 import { renderToString } from 'react-dom/server';
+import { marked } from 'marked';
 import { FileText, Loader2, Clock, CheckCircle, ChevronRight, X, Download, Sparkles, AlertCircle, BookOpen, Layers, Globe, Brain, Bot, TrendingUp } from 'lucide-react';
 import pdfIcon from '../../assets/pdfIcon.svg';
 import { fetchReports, fetchReport, generateReport, type Report } from '../data/api';
+
+// Configure marked for inline-safe rendering
+marked.setOptions({ breaks: true, gfm: true });
+const md = (text: string): string => marked.parse(text) as string;
 
 const PERIODS = [
   { key: '7d', label: 'Last 7 Days', sub: 'Weekly digest' },
@@ -120,6 +125,31 @@ const REPORT_CSS = `
   .paper-pdf:active { transform: translateY(0) scale(0.98); }
   .pdf-icon-img { height: 24px; width: auto; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.12)); }
 
+  /* Markdown-rendered prose inside bucket cards */
+  .bucket-card .md-prose h1, .bucket-card .md-prose h2, .bucket-card .md-prose h3,
+  .bucket-card .md-prose h4 {
+    font-size: 0.8rem; font-weight: 700; color: #334155;
+    margin: 14px 0 6px; padding: 0;
+    text-transform: none; letter-spacing: 0;
+  }
+  .bucket-card .md-prose p { font-size: 0.875rem; color: #475569; line-height: 1.75; margin: 0 0 10px; }
+  .bucket-card .md-prose ul, .bucket-card .md-prose ol {
+    margin: 6px 0 10px 18px; padding: 0;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .bucket-card .md-prose li {
+    background: none; border: none; border-radius: 0; padding: 0;
+    font-size: 0.85rem; color: #475569; line-height: 1.6;
+    display: list-item;
+  }
+  .bucket-card .md-prose li:hover { border-color: transparent; box-shadow: none; }
+  .bucket-card .md-prose strong { font-weight: 700; color: #1E293B; }
+  .bucket-card .md-prose em { font-style: italic; color: #64748B; }
+  .bucket-card .md-prose code {
+    background: #F1F5F9; border-radius: 4px; padding: 1px 5px;
+    font-size: 0.8rem; color: #6366F1; font-family: 'Fira Code', monospace;
+  }
+
   /* Cross-domain section */
   .cross-card {
     background: linear-gradient(135deg, #F5F3FF 0%, #EEF2FF 100%);
@@ -127,7 +157,24 @@ const REPORT_CSS = `
     box-shadow: 0 1px 4px rgba(124,58,237,0.06);
   }
   .cross-card h2 { color: #7C3AED; }
-  .cross-card p { color: #3B0764; font-size: 0.875rem; line-height: 1.7; }
+  .cross-card .md-prose p { color: #3B0764; font-size: 0.875rem; line-height: 1.75; margin: 0 0 10px; }
+  .cross-card .md-prose h1, .cross-card .md-prose h2, .cross-card .md-prose h3,
+  .cross-card .md-prose h4 {
+    font-size: 0.82rem; font-weight: 700; color: #5B21B6;
+    margin: 14px 0 6px; text-transform: none; letter-spacing: 0;
+  }
+  .cross-card .md-prose ul, .cross-card .md-prose ol {
+    margin: 6px 0 10px 18px; padding: 0;
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .cross-card .md-prose li {
+    background: none; border: none; border-radius: 0; padding: 0;
+    font-size: 0.85rem; color: #3B0764; line-height: 1.65;
+    display: list-item;
+  }
+  .cross-card .md-prose li:hover { border-color: transparent; box-shadow: none; }
+  .cross-card .md-prose strong { font-weight: 700; color: #4C1D95; }
+  .cross-card .md-prose em { font-style: italic; color: #6D28D9; }
 `;
 
 function StyledReport({ html }: { html: string }) {
@@ -166,7 +213,12 @@ function transformReportHtml(raw: string): string {
     if (isCross) {
       // Hide the section if the LLM couldn't produce a real synthesis
       if (part.toLowerCase().includes('unavailable')) return '';
-      return `<div class="cross-card">${part}</div>`;
+      // Parse markdown in cross-domain synthesis div content
+      const parsedCross = part.replace(
+        /<div>([\s\S]*?)<\/div>/g,
+        (_m, inner) => `<div class="md-prose">${md(inner)}</div>`
+      );
+      return `<div class="cross-card">${parsedCross}</div>`;
     }
 
     // Identify bucket
@@ -180,8 +232,14 @@ function transformReportHtml(raw: string): string {
     const iconSvg = renderToString(<meta.icon size={18} color="white" />);
     const iconBadge = `<span class="bucket-icon" style="background:linear-gradient(145deg,${meta.gradFrom},${meta.gradTo})">${iconSvg}</span>`;
 
+    // Parse markdown in Key Themes div (LLM output)
+    const parsed = part.replace(
+      /<div>([\s\S]*?)<\/div>/g,
+      (_m, inner) => `<div class="md-prose">${md(inner)}</div>`
+    );
+
     // Inject icon into h2
-    const styled = part.replace(
+    const styled = parsed.replace(
       /(<h2>)([^<]+)(<\/h2>)/,
       `$1${iconBadge} $2$3`
     );
