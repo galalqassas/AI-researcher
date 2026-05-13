@@ -93,7 +93,7 @@ def summarize_paper(paper) -> str:
         return f"{paper.title} — (summary unavailable)"
 
 
-def format_papers_for_bucket(papers, bucket: str) -> str:
+def format_papers_for_bucket(papers) -> str:
     """Format papers in a bucket as a readable list for the LLM."""
     lines = []
     for p in papers:
@@ -106,7 +106,7 @@ def summarize_bucket(bucket: str, papers) -> str:
     if not papers:
         return f"No papers found in the '{bucket}' category for this period."
 
-    paper_text = format_papers_for_bucket(papers, bucket)
+    paper_text = format_papers_for_bucket(papers)
     prompt = PromptTemplate.from_template(BUCKET_SUMMARY).format(
         bucket=bucket, papers=paper_text
     )
@@ -151,7 +151,9 @@ def build_html_report(summaries: dict, cross_synthesis: str, papers_by_bucket: d
         html += f"<h3>Key Themes</h3>\n<div>{summaries.get(bucket, '')}</div>\n"
         html += "<h3>Important Papers</h3><ul>\n"
         for p in papers[:10]:
-            html += f"<li><strong>{p.title}</strong> ({p.published_date}) — <a href=\"{p.pdf_url}\" target=\"_blank\">PDF</a></li>\n"
+            date_str = str(p.published_date) if p.published_date else "N/A"
+            pdf_link = f'<a href="{p.pdf_url}" target="_blank">PDF</a>' if p.pdf_url else "(no PDF)"
+            html += f"<li><strong>{p.title}</strong> ({date_str}) — {pdf_link}</li>\n"
         html += "</ul>\n<hr>\n"
 
     html += "<h2>Cross-Domain Insights</h2>\n"
@@ -181,6 +183,16 @@ def generate_report(period: str) -> dict:
         buckets = json.loads(p.buckets) if p.buckets else ["general_ai"]
         for b in buckets:
             papers_by_bucket.setdefault(b, []).append(p)
+
+    # Per-paper summaries (light model)
+    for p in papers:
+        if not hasattr(p, '_summary'):
+            try:
+                p._summary = summarize_paper(p)
+            except RuntimeError:
+                raise
+            except Exception:
+                p._summary = None
 
     summaries = {}
     for bucket in tqdm(["general_ai", "autonomous_agents", "ai_finance"], desc="Summarizing buckets"):

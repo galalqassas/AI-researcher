@@ -135,18 +135,19 @@ def classify_all_papers():
         # Hybrid RRF fusion when BM25 data exists for this paper
         if paper.id in paper_ids_in_bm25:
             final_scores: dict[str, float] = {}
+            # Pre-compute dense ranking once (shared across buckets)
+            dense_ranked = sorted(dense_scores.items(), key=lambda x: x[1], reverse=True)
+            dense_rank_map = {b: rank for rank, (b, _) in enumerate(dense_ranked)}
+
             for bucket in bucket_embeds:
                 rrf_score = 0.0
                 # Dense rank contribution
-                ranked = sorted(dense_scores.items(), key=lambda x: x[1], reverse=True)
-                for rank, (b, _) in enumerate(ranked):
-                    if b == bucket:
-                        rrf_score += 1.0 / (RRF_K + rank + 1)
-                        break
-                # BM25 rank contribution
+                if bucket in dense_rank_map:
+                    rrf_score += 1.0 / (RRF_K + dense_rank_map[bucket] + 1)
+                # BM25 rank contribution (scores are negative: more negative = more relevant)
                 bucket_bm25 = bm25_per_bucket.get(bucket, {})
                 if paper.id in bucket_bm25:
-                    bm25_ranked = sorted(bucket_bm25.items(), key=lambda x: x[1], reverse=True)
+                    bm25_ranked = sorted(bucket_bm25.items(), key=lambda x: x[1])  # ascending: most negative first
                     for rank, (pid, _) in enumerate(bm25_ranked):
                         if pid == paper.id:
                             rrf_score += 1.0 / (RRF_K + rank + 1)

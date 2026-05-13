@@ -12,7 +12,9 @@ DB_PATH = DATA_DIR / "auto_researcher.db"
 
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4:31b-cloud")
-OLLAMA_MODEL_LIGHT = os.getenv("OLLAMA_MODEL_LIGHT", "gemma4:31b-cloud")
+# OLLAMA_MODEL_LIGHT: defaults to OLLAMA_MODEL (same model). Set to a smaller model
+# (e.g. gemma3:4b) for cost savings on per-paper summaries. Requires `ollama pull`.
+OLLAMA_MODEL_LIGHT = os.getenv("OLLAMA_MODEL_LIGHT", OLLAMA_MODEL)
 OLLAMA_MAX_TOKENS_PER_RUN = int(os.getenv("OLLAMA_MAX_TOKENS_PER_RUN", "0"))
 OLLAMA_EMBED_MODEL = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text-v2-moe")
 
