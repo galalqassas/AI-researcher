@@ -46,6 +46,12 @@ async def paper_stats():
     """Paper counts: total, per bucket, and per month for charts."""
     db = Session()
     total = db.query(Paper).count()
+    # Papers ingested today
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = db.query(Paper).filter(
+        func.strftime("%Y-%m-%d", Paper.ingested_at) == today_str
+    ).count()
+
     per_bucket = {}
     for bucket_key in BUCKETS:
         per_bucket[bucket_key] = db.query(Paper).filter(
@@ -70,6 +76,7 @@ async def paper_stats():
     db.close()
     return JSONResponse({
         "total": total,
+        "today": today,
         "per_bucket": per_bucket,
         "per_date": per_date,
     })

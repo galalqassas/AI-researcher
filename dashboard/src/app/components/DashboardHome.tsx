@@ -165,8 +165,7 @@ export function DashboardHome({ onPapersLoaded }: DashboardHomeProps) {
     color: BUCKET_CONFIG[key as BucketKey]?.color ?? '#94A3B8',
   }));
 
-  // Count papers today from chart data most recent month
-  const papersToday = chartData.length > 0 ? chartData[chartData.length - 1].total : 0;
+  const papersToday = stats.today;
 
   return (
     <div className="p-6 space-y-6">
@@ -189,7 +188,7 @@ export function DashboardHome({ onPapersLoaded }: DashboardHomeProps) {
         <StatCard label="Total Papers" value={totalPapers} sub="across 3 research buckets"
           gradientFrom="#818CF8" gradientTo="#6366F1" shadowColor="#6366F1"
           icon={<Database size={20} color="white" />} />
-        <StatCard label="Latest Month" value={papersToday} sub="papers ingested"
+        <StatCard label="Papers Today" value={papersToday} sub="ingested today"
           gradientFrom="#34D399" gradientTo="#059669" shadowColor="#10B981"
           icon={<Zap size={20} color="white" />} />
         <StatCard label="Reports" value={reportCount} sub="generated"
