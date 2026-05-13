@@ -3,13 +3,36 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pathlib import Path
-from app.database import init_db
+from datetime import datetime, timezone
+from app.database import Session, init_db
+from app.models.paper import PipelineRun
 
 DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "dashboard" / "dist"
 
 
+def _mark_stale_runs_failed():
+    """Mark any pipeline runs still in 'running' status as failed (server restarted mid-run)."""
+    session = Session()
+    try:
+        stale = session.query(PipelineRun).filter(PipelineRun.status == "running").all()
+        now = datetime.now(timezone.utc)
+        for run in stale:
+            run.status = "error"
+            run.finished_at = now
+            if run.started_at:
+                run.duration_s = (now - run.started_at).total_seconds()
+            run.error = "Pipeline interrupted — server restarted while run was in progress"
+        session.commit()
+    except Exception:
+        session.rollback()
+    finally:
+        session.close()
+
+
 def create_app() -> FastAPI:
     init_db()
+    _mark_stale_runs_failed()
+
     app = FastAPI(title="Auto-Researcher", version="0.1.0")
 
     # CORS — allow frontend origins

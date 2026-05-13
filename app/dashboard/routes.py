@@ -1,11 +1,12 @@
 import json
+import concurrent.futures
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from datetime import datetime, timezone
 from sqlalchemy import func
 from app.database import Session
 from app.models.paper import Paper, Report, PipelineRun
-from app.config import BUCKETS
+from app.config import BUCKETS, REPORT_TIMEOUT
 
 router = APIRouter()
 
@@ -118,17 +119,26 @@ async def trigger_ingestion():
 
 @router.post("/reports/generate")
 async def trigger_report(period: str = "7d"):
-    """Generate a report for the given period."""
+    """Generate a report for the given period. Fails if generation exceeds REPORT_TIMEOUT."""
     from app.metrics import track_pipeline
     from app.reports.generator import generate_report
 
     try:
         with track_pipeline("report") as ctx:
-            result = generate_report(period)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(generate_report, period)
+                try:
+                    result = future.result(timeout=REPORT_TIMEOUT if REPORT_TIMEOUT > 0 else None)
+                except concurrent.futures.TimeoutError:
+                    raise TimeoutError(
+                        f"Report generation exceeded {REPORT_TIMEOUT}s timeout"
+                    )
             if "error" in result:
                 return JSONResponse({"error": result["error"]}, status_code=422)
             ctx["paper_count"] = result.get("papers", 0)
             ctx["stages_json"] = result
+    except TimeoutError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=504)
     except Exception as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
 

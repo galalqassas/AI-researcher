@@ -166,6 +166,7 @@ The React SPA is served by FastAPI in production via a catch-all `/{full_path:pa
 | `APP_HOST` | `127.0.0.1` | Dashboard host |
 | `APP_PORT` | `8000` | Dashboard port |
 | `WEBHOOK_URL` | *(empty)* | Webhook URL for pipeline alerts (Slack-compatible). Empty = disabled |
+| `REPORT_TIMEOUT` | `3600` | Max seconds for report generation before auto-failing (0 = unlimited) |
 
 ## Database Models
 
@@ -223,6 +224,8 @@ SQLite is permissive, so these mismatches do not cause runtime errors, but futur
 - `python run.py resync` re-syncs embeddings from SQLite to Pinecone — finds papers with embeddings in SQLite that are missing from Pinecone and upserts them. Used to recover from dual-write drift.
 - FTS5 virtual table `papers_fts` used for BM25 keyword search during hybrid classification and the `/search` endpoint. Populated during ingestion, cleaned during dedup, rebuildable via `rebuild_fts()`.
 - Pipeline metrics tracked in `pipeline_runs` table via `track_pipeline()` context manager. Webhook alerts sent after each run if `WEBHOOK_URL` is configured.
+- On app startup, `_mark_stale_runs_failed()` in `app/main.py` marks any `PipelineRun` rows with `status="running"` as `"error"` — this handles cases where the server restarts mid-pipeline.
+- Report generation (`POST /reports/generate`) enforces a `REPORT_TIMEOUT` (default 3600s / 1 hour). If report generation exceeds this, the pipeline run is marked as failed and a 504 response is returned. Configured via the `REPORT_TIMEOUT` env var.
 - Database migrations managed by Alembic. Run `alembic upgrade head` to apply migrations. Initial schema captured in `migrations/versions/001_initial_schema.py`.
 - Report generation uses `Session()` factory (not `get_session()`) for safe session handling. Partial results (bucket summaries, cross-domain synthesis) are preserved on LLM failure.
 
@@ -231,7 +234,7 @@ SQLite is permissive, so these mismatches do not cause runtime errors, but futur
 | Issue | Severity | Description |
 |---|---|---|
 | O(n²) deduplication | Medium | `dedup.py` compares every pair of papers. Will be slow for large databases. |
-| API routes block synchronously | Medium | `POST /ingest` and `POST /reports/generate` block the server for the full pipeline duration with no user feedback. |
+| API routes block synchronously | Medium | `POST /ingest` blocks the server for the full pipeline duration with no user feedback. Report generation has a configurable timeout (`REPORT_TIMEOUT`, default 1 hour). |
 | `OLLAMA_MODEL_LIGHT` defaults to heavy model | Low | By default both light and heavy tasks use the same model (`gemma4:31b-cloud`). Cost savings only kick in when `OLLAMA_MODEL_LIGHT` is set to a smaller model in `.env`. |
 | Migration/model mismatches | Low | Initial migration has nullable and type mismatches vs. models (see table above). SQLite is permissive so it does not break at runtime. |
 | Frontend stale reference | Low | `dashboard/src/app/components/PapersPanel.tsx` line 171 references "Qdrant" but the backend uses Pinecone. |

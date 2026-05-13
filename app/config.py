@@ -58,6 +58,7 @@ APP_HOST = os.getenv("APP_HOST", "127.0.0.1")
 APP_PORT = int(os.getenv("APP_PORT", "8000"))
 REPORT_PERIODS = ["7d", "1m", "3m", "6m", "1y"]
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
+REPORT_TIMEOUT = int(os.getenv("REPORT_TIMEOUT", "3600"))
 
 for d in [DATA_DIR, PDFS_DIR, REPORTS_DIR]:
     d.mkdir(parents=True, exist_ok=True)
