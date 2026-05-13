@@ -163,7 +163,11 @@ function transformReportHtml(raw: string): string {
 
   return parts.map((part) => {
     const isCross = part.includes('Cross-Domain');
-    if (isCross) return `<div class="cross-card">${part}</div>`;
+    if (isCross) {
+      // Hide the section if the LLM couldn't produce a real synthesis
+      if (part.toLowerCase().includes('unavailable')) return '';
+      return `<div class="cross-card">${part}</div>`;
+    }
 
     // Identify bucket
     let bucketKey = 'general_ai';
