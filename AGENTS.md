@@ -188,7 +188,33 @@ All commands run via `python run.py`:
 
 ## Testing
 
-Tests live in `tests/`. When adding tests, use `pytest` and place test files matching `test_*.py` in the `tests/` directory.
+Tests live in `tests/`. Run with `python -m pytest tests/ -v`. The test suite uses `pytest` with in-memory SQLite and `unittest.mock` for all external services (Ollama, Qdrant, arXiv, HTTP).
+
+### Test Structure
+
+```
+tests/
+├── conftest.py               # Shared fixtures (DB, embeddings, paper factory)
+├── test_arxiv_client.py       # matches_keywords, build_query
+├── test_pdf_extractor.py       # download_pdf, extract_text
+├── test_pipeline.py            # parse_published_date, run_ingestion
+├── test_embedder.py            # embed_to_bytes, bytes_to_embed, get_embedding, embed_all_papers
+├── test_classifier.py          # cosine_similarity, _sanitize_fts_query, classify_all_papers, compute_bucket_embeddings
+├── test_dedup.py               # find_duplicates, deduplicate
+├── test_generator.py           # format_papers, build_html_report, LLM cache, generate_report
+├── test_metrics.py             # track_pipeline context manager
+├── test_alerts.py              # send_alert
+├── test_database.py            # init_db, get_session, rebuild_fts
+└── test_routes.py              # FastAPI TestClient endpoints
+```
+
+### Key Testing Patterns
+
+- **In-memory SQLite** (`sqlite:///:memory:`) with FTS5 for all DB-dependent tests
+- **`unittest.mock.patch`** for all external services (Ollama, Qdrant, arXiv API, HTTP)
+- **`conftest.py`** provides `db_session`, `make_paper`, `sample_embedding`, `sample_embedding_bytes` fixtures
+- **`check_same_thread=False`** on SQLite engines used in route tests (FastAPI runs in threads)
+- **Session isolation**: Tests that modify DB state use separate sessions; verify via raw SQL on engine connections when sessions may be closed
 
 ## Key Dependencies
 
