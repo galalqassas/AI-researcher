@@ -17,7 +17,7 @@ def cli():
 def ingest(query, max_results, bucket):
     """Fetch papers from arXiv, extract text, and store in database."""
     from app.ingestion.pipeline import run_ingestion
-    added = run_ingestion(query=query, max_results=max_results, bucket=bucket)
+    added, _ = run_ingestion(query=query, max_results=max_results, bucket=bucket)
     click.echo(f"Ingestion complete: {added} new papers stored")
 
 
@@ -65,11 +65,11 @@ def run_pipeline(max_results, period, query, bucket):
 
     with track_pipeline("full_pipeline") as ctx:
         click.echo("=== Step 1: Ingest ===")
-        added = run_ingestion(max_results=max_results, query=query, bucket=bucket)
+        added, new_ids = run_ingestion(max_results=max_results, query=query, bucket=bucket)
         click.echo(f"  Ingested: {added} new papers")
 
         click.echo("=== Step 2: Dedup ===")
-        removed = deduplicate()
+        removed = deduplicate(new_paper_ids=new_ids if new_ids else None)
         click.echo(f"  Removed: {removed} duplicates")
 
         click.echo("=== Step 3: Embed ===")
@@ -77,7 +77,7 @@ def run_pipeline(max_results, period, query, bucket):
         click.echo(f"  Embedded: {embedded} papers")
 
         click.echo("=== Step 4: Classify ===")
-        classified = classify_all_papers()
+        classified = classify_all_papers(paper_ids=new_ids if new_ids else None)
         click.echo(f"  Classified: {classified} papers")
 
         click.echo("=== Step 5: Report ===")
@@ -108,10 +108,12 @@ def resync():
 @click.option("--host", default=None)
 @click.option("--port", default=None, type=int)
 def serve(host, port):
-    """Start the local dashboard."""
+    """Start the local dashboard with auto-ingest scheduler (1 paper/min)."""
     import uvicorn
-    from app.main import create_app
-    uvicorn.run(create_app(), host=host or APP_HOST, port=port or APP_PORT)
+    from app.main import create_app, _start_scheduler
+    app = create_app()
+    _start_scheduler()
+    uvicorn.run(app, host=host or APP_HOST, port=port or APP_PORT)
 
 
 if __name__ == "__main__":

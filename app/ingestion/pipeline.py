@@ -24,21 +24,24 @@ def parse_published_date(value) -> date | None:
         return None
 
 
-def run_ingestion(query=None, max_results=None, bucket=None):
+def run_ingestion(query=None, max_results=None, bucket=None, sort_by_date=False):
     """Full ingestion pipeline: fetch from arXiv → extract full text → store in DB.
-    If bucket is specified, only fetch that bucket."""
+    If bucket is specified, only fetch that bucket.
+    sort_by_date: Sort by newest first instead of relevance (for scheduler).
+    Returns (count, new_ids) — number of new papers and their DB IDs."""
     init_db()
 
     log.info("Starting ingestion pipeline...")
-    papers = fetch_papers(max_results=max_results, query=query, bucket=bucket)
+    papers = fetch_papers(max_results=max_results, query=query, bucket=bucket, sort_by_date=sort_by_date)
 
     if not papers:
         log.warning("No papers fetched from arXiv")
-        return 0
+        return 0, []
 
     with get_session() as session:
         added = 0
-        new_ids = []
+        new_rows = []  # [(id, title, abstract)] for FTS index
+        new_ids = []   # [id] for downstream dedup/classify
 
         for p in tqdm(papers, desc="Storing papers"):
             existing = session.query(Paper).filter_by(arxiv_id=p["arxiv_id"]).first()
@@ -61,7 +64,8 @@ def run_ingestion(query=None, max_results=None, bucket=None):
             )
             session.add(paper)
             session.flush()  # assign ID before FTS
-            new_ids.append((paper.id, paper.title or "", paper.abstract or ""))
+            new_rows.append((paper.id, paper.title or "", paper.abstract or ""))
+            new_ids.append(paper.id)
             added += 1
 
             if added % 10 == 0:
@@ -70,10 +74,10 @@ def run_ingestion(query=None, max_results=None, bucket=None):
         session.commit()
 
         # Update FTS index with new papers
-        if new_ids:
+        if new_rows:
             try:
                 with engine.connect() as conn:
-                    for pid, title, abstract in new_ids:
+                    for pid, title, abstract in new_rows:
                         conn.execute(
                             text("INSERT OR REPLACE INTO papers_fts (rowid, title, abstract) VALUES (:id, :title, :abstract)"),
                             {"id": pid, "title": title, "abstract": abstract}
@@ -83,4 +87,4 @@ def run_ingestion(query=None, max_results=None, bucket=None):
                 log.warning(f"FTS index update failed: {e}")
 
     log.info(f"Ingestion complete: {added} new papers stored")
-    return added
+    return added, new_ids

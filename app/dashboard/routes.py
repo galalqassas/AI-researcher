@@ -102,10 +102,10 @@ async def trigger_ingestion():
     from app.classification.classifier import classify_all_papers
 
     with track_pipeline("ingest") as ctx:
-        added = run_ingestion()
-        removed = deduplicate()
+        added, new_ids = run_ingestion()
+        removed = deduplicate(new_paper_ids=new_ids if new_ids else None)
         embedded = embed_all_papers()
-        classified = classify_all_papers()
+        classified = classify_all_papers(paper_ids=new_ids if new_ids else None)
         ctx["paper_count"] = added
         ctx["stages_json"] = {
             "ingested": added,

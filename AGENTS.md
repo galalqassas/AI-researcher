@@ -120,7 +120,7 @@ All commands run via `python run.py`:
 | `python run.py pipeline --period 7d` | Run full pipeline: ingest → dedup → embed → classify → report with metrics tracking |
 | `python run.py pipeline --bucket general_ai --query "cat:cs.AI"` | Run pipeline targeting a specific bucket and/or query |
 | `python run.py resync` | Re-sync embeddings from SQLite to Pinecone (recover from dual-write drift) |
-| `python run.py serve [--host] [--port]` | Start dashboard server (default: 127.0.0.1:8000) |
+| `python run.py serve [--host] [--port]` | Start dashboard server with auto-ingest scheduler (2 papers/min, rotating buckets) |
 
 ## Dashboard Frontend
 
@@ -140,9 +140,9 @@ The React SPA is served by FastAPI in production via a catch-all `/{full_path:pa
 
 ## Pipeline Flow
 
-1. **Ingest** — Searches arXiv by category+keyword (sorted by relevance, filtered client-side for date), downloads PDFs, extracts text via pymupdf, stores in SQLite, populates FTS5 index. If PDF extraction fails, `full_text` is stored as an empty string (`""`) — the paper is still saved.
-2. **Dedup** — O(n²) fuzzy title matching via `rapidfuzz.fuzz.ratio()`, removes duplicates keeping the paper with longer `full_text`. Also deletes orphan vectors from Pinecone and stale FTS rows.
-3. **Classify** — Generates embeddings via `nomic-embed-text-v2-moe`, dual-writes to both SQLite and Pinecone. Uses **hybrid RRF classification**: dense cosine similarity against bucket embeddings + BM25 keyword search via FTS5, merged via Reciprocal Rank Fusion (`1/(k+dense_rank) + 1/(k+bm25_rank)`, default `k=60`). BM25 rankings are pre-computed per bucket. **Borderline reranking**: papers within `RERANK_MARGIN` (0.05) below the similarity threshold get re-scored using a weighted blend of cosine (0.6) and RRF (0.4). A borderline bucket is promoted only if the blended score is `>= SIMILARITY_THRESHOLD * 0.8` (i.e., 80% of the main threshold). Falls back to pure cosine if no BM25 results.
+1. **Ingest** — Searches arXiv by category+keyword (sorted by relevance or date via `sort_by_date` param, filtered client-side for date), downloads PDFs, extracts text via pymupdf, stores in SQLite, populates FTS5 index. Returns `(count, new_ids)` tuple so downstream steps can operate incrementally. If PDF extraction fails, `full_text` is stored as an empty string (`""`) — the paper is still saved.
+2. **Dedup** — Fuzzy title matching via `rapidfuzz.fuzz.ratio()`. Accepts optional `new_paper_ids` for **incremental mode** — only compares new papers against existing ones (O(n×m)) instead of all-vs-all (O(n²)). Full scan still available via CLI `dedup` command. Also deletes orphan vectors from Pinecone and stale FTS rows.
+3. **Classify** — Generates embeddings via `nomic-embed-text-v2-moe`, dual-writes to both SQLite and Pinecone. Accepts optional `paper_ids` for **incremental mode** — only classifies specified papers instead of all embedded papers. Uses **hybrid RRF classification**: dense cosine similarity against bucket embeddings + BM25 keyword search via FTS5, merged via Reciprocal Rank Fusion (`1/(k+dense_rank) + 1/(k+bm25_rank)`, default `k=60`). BM25 rankings are pre-computed per bucket. **Borderline reranking**: papers within `RERANK_MARGIN` (0.05) below the similarity threshold get re-scored using a weighted blend of cosine (0.6) and RRF (0.4). A borderline bucket is promoted only if the blended score is `>= SIMILARITY_THRESHOLD * 0.8` (i.e., 80% of the main threshold). Falls back to pure cosine if no BM25 results.
 4. **Report** — Groups papers by bucket. Per-paper summaries use `llm_light` (lazy-initialized, configurable, defaults to `OLLAMA_MODEL`), per-bucket summaries + cross-domain synthesis use `llm_heavy` (`OLLAMA_MODEL`). LLM responses are cached to `data/llm_cache.json` keyed on SHA-256 hash of `model:prompt`. Token usage is tracked per run and capped by `OLLAMA_MAX_TOKENS_PER_RUN` (0 = unlimited). Partial results are saved on LLM failure — completed bucket summaries are preserved even if later buckets fail. **Note:** per-paper summaries are stored as a temporary `paper._summary` attribute in-memory; they are **not persisted** to the database.
 
 ## Configuration (.env)
@@ -227,6 +227,10 @@ All endpoints are covered by `test_routes.py`.
 - Token counting is naive whitespace-split word count (`len(text.split())`) — not model-specific tokenization.
 - Bucket description embeddings cached to `data/bucket_embeddings.json`. Cache is **auto-invalidated** via a SHA-256 fingerprint of `BUCKET_DESCRIPTIONS` — if the descriptions change, the cache is recomputed on next `classify` run. No manual file deletion needed.
 - `embed_all_papers()` returns the count of successfully embedded papers (not the total queried). If Pinecone upsert fails, a warning is logged but the SQLite count is still accurate.
+- `run_ingestion()` returns `(count, new_ids)` — the number of new papers and their DB IDs. Downstream steps (`deduplicate`, `classify_all_papers`) accept optional ID lists to operate incrementally on just the new papers.
+- `classify_all_papers(paper_ids=None)` — if `paper_ids` is given, only classifies those papers. Otherwise classifies all embedded papers (full scan, used by CLI `classify` command).
+- `deduplicate(new_paper_ids=None)` — if `new_paper_ids` is given, only compares those papers against existing ones (incremental, used by scheduler and pipeline). Otherwise compares all pairs (full scan, used by CLI `dedup` command).
+- `python run.py serve` starts the dashboard server with an auto-ingest background scheduler (every 60s: fetch up to 2 newest papers from the next bucket in rotation, dedup/embed/classify only new ones). The `--schedule` flag has been removed — the scheduler always runs.
 - `python run.py resync` re-syncs embeddings from SQLite to Pinecone — finds papers with embeddings in SQLite that are missing from Pinecone and upserts them. Used to recover from dual-write drift.
 - FTS5 virtual table `papers_fts` used for BM25 keyword search during hybrid classification and the `/search` endpoint. Populated during ingestion, cleaned during dedup, rebuildable via `rebuild_fts()`.
 - Pipeline metrics tracked in `pipeline_runs` table via `track_pipeline()` context manager. Webhook alerts sent after each run if `WEBHOOK_URL` is configured.
@@ -239,7 +243,7 @@ All endpoints are covered by `test_routes.py`.
 
 | Issue | Severity | Description |
 |---|---|---|
-| O(n²) deduplication | Medium | `dedup.py` compares every pair of papers. Will be slow for large databases. |
+| CLI `dedup` still O(n²) | Low | Only the scheduler/pipeline uses incremental dedup (`new_paper_ids`). The CLI `dedup` command still does a full O(n²) scan, which is slow for large databases. |
 | API routes block synchronously | Medium | `POST /ingest` blocks the server for the full pipeline duration with no user feedback. Report generation has a configurable timeout (`REPORT_TIMEOUT`, default 1 hour). |
 | `OLLAMA_MODEL_LIGHT` defaults to heavy model | Low | By default both light and heavy tasks use the same model (`gemma4:31b-cloud`). Cost savings only kick in when `OLLAMA_MODEL_LIGHT` is set to a smaller model in `.env`. |
 | Migration/model mismatches | Low | Initial migration has nullable and type mismatches vs. models (see table above). SQLite is permissive so it does not break at runtime. |
@@ -332,7 +336,8 @@ alembic revision --autogenerate -m "description of change"
 ## arXiv API Quirks
 
 The arXiv API returns **HTTP 500** when combining `submittedDate` range filters with `sortBy=SubmittedDate` on multi-category queries. To work around this:
-- Queries use `sortBy=Relevance` (no date sorting)
+- Default `sortBy=Relevance` (no date sorting); the scheduler uses `sortBy=SubmittedDate` (newest first) since it queries one bucket at a time
 - Date filtering is done client-side after fetching
 - The client over-fetches (3× `max_results`) to compensate for papers filtered out by date
-- `page_size=50`, `delay_seconds=5.0`, `num_retries=5` to avoid rate limiting (HTTP 429)
+- `page_size=50`, `delay_seconds=10.0`, `num_retries=5` to avoid rate limiting (HTTP 429)
+- `fetch_papers(sort_by_date=True)` sorts by `SubmittedDate` for the scheduler to discover new papers; `sort_by_date=False` (default) sorts by `Relevance` for ad-hoc queries

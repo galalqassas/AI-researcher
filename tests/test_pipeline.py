@@ -57,8 +57,9 @@ class TestRunIngestion:
              patch("app.ingestion.pipeline.engine", pipeline_engine):
             mock_gs.return_value.__enter__ = MagicMock(return_value=pipeline_session)
             mock_gs.return_value.__exit__ = MagicMock(return_value=False)
-            added = run_ingestion()
+            added, new_ids = run_ingestion()
         assert added == 1
+        assert len(new_ids) == 1
         assert pipeline_session.query(Paper).count() == 1
 
     def test_duplicate_skipped(self, pipeline_engine, pipeline_session):
@@ -72,7 +73,7 @@ class TestRunIngestion:
              patch("app.ingestion.pipeline.engine", pipeline_engine):
             mock_gs.return_value.__enter__ = MagicMock(return_value=pipeline_session)
             mock_gs.return_value.__exit__ = MagicMock(return_value=False)
-            assert run_ingestion() == 1
+            assert run_ingestion() == (1, [1])
         # Second run with same paper
         with patch("app.ingestion.pipeline.fetch_papers", return_value=paper), \
              patch("app.ingestion.pipeline.extract_paper_text", return_value="text"), \
@@ -81,7 +82,7 @@ class TestRunIngestion:
              patch("app.ingestion.pipeline.engine", pipeline_engine):
             mock_gs.return_value.__enter__ = MagicMock(return_value=pipeline_session)
             mock_gs.return_value.__exit__ = MagicMock(return_value=False)
-            assert run_ingestion() == 0
+            assert run_ingestion() == (0, [])
 
     def test_no_papers_returns_zero(self, pipeline_engine, pipeline_session):
         with patch("app.ingestion.pipeline.fetch_papers", return_value=[]), \
@@ -89,4 +90,4 @@ class TestRunIngestion:
              patch("app.ingestion.pipeline.get_session") as mock_gs:
             mock_gs.return_value.__enter__ = MagicMock(return_value=pipeline_session)
             mock_gs.return_value.__exit__ = MagicMock(return_value=False)
-            assert run_ingestion() == 0
+            assert run_ingestion() == (0, [])

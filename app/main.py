@@ -69,3 +69,9 @@ def create_app() -> FastAPI:
             return FileResponse(DASHBOARD_DIR / "index.html")
 
     return app
+
+
+def _start_scheduler():
+    """Begin auto-ingesting 1 paper per minute with full pipeline, forever."""
+    from app.scheduler import start_scheduler
+    start_scheduler()

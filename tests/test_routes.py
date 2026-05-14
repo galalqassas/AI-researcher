@@ -209,7 +209,7 @@ class TestAPIRoutes:
         Session.__call__ = lambda self, *a, **k: sf()
         try:
             with patch("app.database.engine", app_engine), \
-                 patch("app.ingestion.pipeline.run_ingestion", return_value=5) as mock_ingest, \
+                 patch("app.ingestion.pipeline.run_ingestion", return_value=(5, [1,2,3,4,5])) as mock_ingest, \
                  patch("app.classification.dedup.deduplicate", return_value=1) as mock_dedup, \
                  patch("app.classification.embedder.embed_all_papers", return_value=4) as mock_embed, \
                  patch("app.classification.classifier.classify_all_papers", return_value=4) as mock_classify, \

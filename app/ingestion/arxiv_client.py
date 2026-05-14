@@ -26,12 +26,7 @@ def matches_keywords(text: str, bucket: str) -> bool:
 
 
 def build_query(bucket: str, extra_query: str = None) -> str:
-    """Build an arXiv API query string for a bucket using categories + keywords.
-
-    NOTE: The arXiv API returns HTTP 500 when combining submittedDate
-    filter/sort with multi-category queries. We sort by Relevance and
-    filter dates client-side instead.
-    """
+    """Build an arXiv API query string for a bucket using categories + keywords."""
     cats = ARXIV_CATEGORIES[bucket]
     cat_part = " OR ".join(f"cat:{c}" for c in cats)
     kws = ARXIV_KEYWORDS[bucket]
@@ -42,10 +37,11 @@ def build_query(bucket: str, extra_query: str = None) -> str:
     return " AND ".join(parts)
 
 
-def fetch_papers(bucket: str = None, max_results: int = None, query: str = None):
+def fetch_papers(bucket: str = None, max_results: int = None, query: str = None, sort_by_date: bool = False):
     """Fetch papers from arXiv. If bucket is given, use category+keyword filtering.
     If query is given, use it directly. Returns list of dicts with paper metadata.
-    Date filtering is done client-side to avoid arXiv API HTTP 500 errors."""
+    Date filtering is done client-side to avoid arXiv API HTTP 500 errors.
+    sort_by_date: Sort by SubmittedDate (newest first) instead of Relevance."""
     max_results = max_results or ARXIV_MAX_RESULTS
     buckets_to_search = [bucket] if bucket else BUCKETS
     # Fetch extra to compensate for client-side date filtering
@@ -57,10 +53,11 @@ def fetch_papers(bucket: str = None, max_results: int = None, query: str = None)
         search_query = build_query(b, query) if query else build_query(b)
         log.info(f"Searching arXiv for bucket '{b}': {search_query}")
 
+        sort_criterion = arxiv.SortCriterion.SubmittedDate if sort_by_date else arxiv.SortCriterion.Relevance
         search = arxiv.Search(
             query=search_query,
             max_results=fetch_limit,
-            sort_by=arxiv.SortCriterion.Relevance,
+            sort_by=sort_criterion,
         )
 
         bucket_count = 0

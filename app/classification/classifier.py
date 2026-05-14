@@ -113,10 +113,15 @@ def _bm25_search(query: str, limit: int = 200) -> list[tuple[int, float]]:
         return []
 
 
-def classify_all_papers():
-    """Classify all embedded papers into research buckets using hybrid RRF."""
+def classify_all_papers(paper_ids: list[int] = None):
+    """Classify papers into research buckets using hybrid RRF.
+    If paper_ids is given, only classify those papers (incremental).
+    Otherwise, classify all embedded papers (full scan)."""
     session = Session()
-    papers = session.query(Paper).filter(Paper.embedding != None).all()
+    query = session.query(Paper).filter(Paper.embedding != None)
+    if paper_ids is not None:
+        query = query.filter(Paper.id.in_(paper_ids))
+    papers = query.all()
     log.info(f"Classifying {len(papers)} papers")
 
     bucket_embeds = compute_bucket_embeddings()
