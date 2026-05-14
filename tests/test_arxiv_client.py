@@ -50,6 +50,25 @@ class TestBuildQuery:
         assert "cat:q-fin.ST" in query
         assert "AND" in query
 
+    def test_query_with_after_date(self):
+        from datetime import date
+        after = date(2026, 5, 13)
+        query = build_query("general_ai", after_date=after)
+        assert "submittedDate:[202605130000 TO 209912310000]" in query
+        assert "cat:cs.AI" in query
+        assert "AND" in query
+
+    def test_query_after_date_preserves_extra_query(self):
+        from datetime import date
+        after = date(2026, 1, 1)
+        query = build_query("general_ai", extra_query="cat:cs.CL", after_date=after)
+        assert "cat:cs.CL" in query
+        assert "submittedDate:[202601010000 TO 209912310000]" in query
+
+    def test_query_no_after_date(self):
+        query = build_query("general_ai")
+        assert "submittedDate" not in query
+
 
 class TestFetchPapers:
 
@@ -126,9 +145,32 @@ class TestFetchPapers:
         with patch("app.ingestion.arxiv_client.client", mock_client):
             fetch_papers(bucket="general_ai", max_results=1, query="cat:cs.CL")
 
-        # Verify the search object was created with the extra query
         search_call = mock_client.results.call_args[0][0]
         assert "cat:cs.CL" in search_call.query
+
+    def test_with_after_date(self):
+        """after_date adds submittedDate filter to the search query."""
+        from datetime import date as date_type
+        mock_client = MagicMock()
+        mock_client.results.return_value = []
+
+        with patch("app.ingestion.arxiv_client.client", mock_client):
+            fetch_papers(bucket="general_ai", max_results=1, after_date=date_type(2026, 5, 13))
+
+        search_call = mock_client.results.call_args[0][0]
+        assert "submittedDate:[202605130000 TO 209912310000]" in search_call.query
+
+    def test_after_date_reduces_fetch_limit(self):
+        """When after_date is set, fetch_limit equals max_results (no 3x over-fetch)."""
+        from datetime import date as date_type
+        mock_client = MagicMock()
+        mock_client.results.return_value = []
+
+        with patch("app.ingestion.arxiv_client.client", mock_client):
+            fetch_papers(bucket="general_ai", max_results=5, after_date=date_type(2026, 5, 13))
+
+        search_call = mock_client.results.call_args[0][0]
+        assert search_call.max_results == 5
 
     def test_skips_seen_ids_across_buckets(self):
         """Duplicate arxiv_ids across buckets are deduplicated."""

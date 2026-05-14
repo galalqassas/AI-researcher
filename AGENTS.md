@@ -120,7 +120,7 @@ All commands run via `python run.py`:
 | `python run.py pipeline --period 7d` | Run full pipeline: ingest → dedup → embed → classify → report with metrics tracking |
 | `python run.py pipeline --bucket general_ai --query "cat:cs.AI"` | Run pipeline targeting a specific bucket and/or query |
 | `python run.py resync` | Re-sync embeddings from SQLite to Pinecone (recover from dual-write drift) |
-| `python run.py serve [--host] [--port]` | Start dashboard server with auto-ingest scheduler (2 papers/min, rotating buckets) |
+| `python run.py serve [--host] [--port]` | Start dashboard server with auto-ingest scheduler (tries all buckets per cycle, 60s interval) |
 
 ## Dashboard Frontend
 
@@ -140,7 +140,7 @@ The React SPA is served by FastAPI in production via a catch-all `/{full_path:pa
 
 ## Pipeline Flow
 
-1. **Ingest** — Searches arXiv by category+keyword (sorted by relevance or date via `sort_by_date` param, filtered client-side for date), downloads PDFs, extracts text via pymupdf, stores in SQLite, populates FTS5 index. Returns `(count, new_ids)` tuple so downstream steps can operate incrementally. If PDF extraction fails, `full_text` is stored as an empty string (`""`) — the paper is still saved.
+1. **Ingest** — Searches arXiv by category+keyword, optionally filtered by `after_date` (server-side `submittedDate` range filter) to skip papers already in the DB. Sorts by relevance or date. Downloads PDFs, extracts text via pymupdf, stores in SQLite, populates FTS5 index. Returns `(count, new_ids)` tuple so downstream steps can operate incrementally. If PDF extraction fails, `full_text` is stored as an empty string (`""`) — the paper is still saved.
 2. **Dedup** — Fuzzy title matching via `rapidfuzz.fuzz.ratio()`. Accepts optional `new_paper_ids` for **incremental mode** — only compares new papers against existing ones (O(n×m)) instead of all-vs-all (O(n²)). Full scan still available via CLI `dedup` command. Also deletes orphan vectors from Pinecone and stale FTS rows.
 3. **Classify** — Generates embeddings via `nomic-embed-text-v2-moe`, dual-writes to both SQLite and Pinecone. Accepts optional `paper_ids` for **incremental mode** — only classifies specified papers instead of all embedded papers. Uses **hybrid RRF classification**: dense cosine similarity against bucket embeddings + BM25 keyword search via FTS5, merged via Reciprocal Rank Fusion (`1/(k+dense_rank) + 1/(k+bm25_rank)`, default `k=60`). BM25 rankings are pre-computed per bucket. **Borderline reranking**: papers within `RERANK_MARGIN` (0.05) below the similarity threshold get re-scored using a weighted blend of cosine (0.6) and RRF (0.4). A borderline bucket is promoted only if the blended score is `>= SIMILARITY_THRESHOLD * 0.8` (i.e., 80% of the main threshold). Falls back to pure cosine if no BM25 results.
 4. **Report** — Groups papers by bucket. Per-paper summaries use `llm_light` (lazy-initialized, configurable, defaults to `OLLAMA_MODEL`), per-bucket summaries + cross-domain synthesis use `llm_heavy` (`OLLAMA_MODEL`). LLM responses are cached to `data/llm_cache.json` keyed on SHA-256 hash of `model:prompt`. Token usage is tracked per run and capped by `OLLAMA_MAX_TOKENS_PER_RUN` (0 = unlimited). Partial results are saved on LLM failure — completed bucket summaries are preserved even if later buckets fail. **Note:** per-paper summaries are stored as a temporary `paper._summary` attribute in-memory; they are **not persisted** to the database.
@@ -228,10 +228,13 @@ All endpoints are covered by `test_routes.py`.
 - Bucket description embeddings cached to `data/bucket_embeddings.json`. Cache is **auto-invalidated** via a SHA-256 fingerprint of `BUCKET_DESCRIPTIONS` — if the descriptions change, the cache is recomputed on next `classify` run. No manual file deletion needed.
 - `embed_all_papers()` returns the count of successfully embedded papers (not the total queried). If Pinecone upsert fails, a warning is logged but the SQLite count is still accurate.
 - `run_ingestion()` returns `(count, new_ids)` — the number of new papers and their DB IDs. Downstream steps (`deduplicate`, `classify_all_papers`) accept optional ID lists to operate incrementally on just the new papers.
+- `run_ingestion(after_date=date)` filters arXiv results server-side using `submittedDate:[YYYYMMDD0000 TO 209912310000]` to only fetch papers published on or after the given date. This eliminates re-fetching papers already in the DB.
+- `get_last_published_date()` queries the DB for `max(Paper.published_date)`, used by the scheduler to determine the `after_date` filter.
 - `classify_all_papers(paper_ids=None)` — if `paper_ids` is given, only classifies those papers. Otherwise classifies all embedded papers (full scan, used by CLI `classify` command).
 - `deduplicate(new_paper_ids=None)` — if `new_paper_ids` is given, only compares those papers against existing ones (incremental, used by scheduler and pipeline). Otherwise compares all pairs (full scan, used by CLI `dedup` command).
-- `python run.py serve` starts the dashboard server with an auto-ingest background scheduler (every 60s: fetch up to 2 newest papers from the next bucket in rotation, dedup/embed/classify only new ones). The `--schedule` flag has been removed — the scheduler always runs.
-- `python run.py resync` re-syncs embeddings from SQLite to Pinecone — finds papers with embeddings in SQLite that are missing from Pinecone and upserts them. Used to recover from dual-write drift.
+- `python run.py serve` starts the dashboard server with an auto-ingest background scheduler. Each cycle (every 60s): queries the DB for the latest `published_date`, uses it as an `after_date` filter for arXiv, tries all 3 buckets sequentially until one yields new papers, then runs incremental dedup/embed/classify on only the new papers.
+- `build_query(bucket, extra_query=None, after_date=None)` — builds arXiv API query strings. When `after_date` is given, appends a `submittedDate` range filter to only return papers from that date onward.
+- `fetch_papers(..., after_date=None)` — passes `after_date` to `build_query()`. When set, reduces fetch over-fetch from `3×` to `1×` since the date filter already eliminates old papers.
 - FTS5 virtual table `papers_fts` used for BM25 keyword search during hybrid classification and the `/search` endpoint. Populated during ingestion, cleaned during dedup, rebuildable via `rebuild_fts()`.
 - Pipeline metrics tracked in `pipeline_runs` table via `track_pipeline()` context manager. Webhook alerts sent after each run if `WEBHOOK_URL` is configured.
 - On app startup, `_mark_stale_runs_failed()` in `app/main.py` marks any `PipelineRun` rows with `status="running"` as `"error"` — this handles cases where the server restarts mid-pipeline.
@@ -337,7 +340,7 @@ alembic revision --autogenerate -m "description of change"
 
 The arXiv API returns **HTTP 500** when combining `submittedDate` range filters with `sortBy=SubmittedDate` on multi-category queries. To work around this:
 - Default `sortBy=Relevance` (no date sorting); the scheduler uses `sortBy=SubmittedDate` (newest first) since it queries one bucket at a time
-- Date filtering is done client-side after fetching
-- The client over-fetches (3× `max_results`) to compensate for papers filtered out by date
-- `page_size=50`, `delay_seconds=10.0`, `num_retries=5` to avoid rate limiting (HTTP 429)
+- The scheduler uses server-side date filtering (`submittedDate:[YYYYMMDD0000 TO 209912310000]`) to only fetch papers newer than the latest one in the DB. This works reliably for single-bucket queries
+- When `after_date` is set in `fetch_papers()`, the over-fetch factor is reduced from `3×` to `1×` since the date filter eliminates old papers server-side
+- Client-side date filtering (`ARXIV_FROM_DATE`) is still applied as a safety net for papers published before the configured minimum date
 - `fetch_papers(sort_by_date=True)` sorts by `SubmittedDate` for the scheduler to discover new papers; `sort_by_date=False` (default) sorts by `Relevance` for ad-hoc queries

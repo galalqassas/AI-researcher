@@ -7,7 +7,7 @@ from app.database import get_session, init_db, engine
 from app.models.paper import Paper
 from app.ingestion.arxiv_client import fetch_papers
 from app.ingestion.pdf_extractor import extract_paper_text
-from sqlalchemy import text
+from sqlalchemy import func, text
 
 log = logging.getLogger(__name__)
 
@@ -24,15 +24,25 @@ def parse_published_date(value) -> date | None:
         return None
 
 
-def run_ingestion(query=None, max_results=None, bucket=None, sort_by_date=False):
+def get_last_published_date() -> date | None:
+    """Return the most recent published_date in the DB, or None if empty."""
+    init_db()
+    with get_session() as session:
+        result = session.query(func.max(Paper.published_date)).scalar()
+        return result
+
+
+def run_ingestion(query=None, max_results=None, bucket=None, sort_by_date=False, after_date=None):
     """Full ingestion pipeline: fetch from arXiv → extract full text → store in DB.
     If bucket is specified, only fetch that bucket.
     sort_by_date: Sort by newest first instead of relevance (for scheduler).
+    after_date: If set, only fetch papers published on or after this date (server-side filter).
     Returns (count, new_ids) — number of new papers and their DB IDs."""
     init_db()
 
     log.info("Starting ingestion pipeline...")
-    papers = fetch_papers(max_results=max_results, query=query, bucket=bucket, sort_by_date=sort_by_date)
+    papers = fetch_papers(max_results=max_results, query=query, bucket=bucket,
+                          sort_by_date=sort_by_date, after_date=after_date)
 
     if not papers:
         log.warning("No papers fetched from arXiv")

@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base
-from app.ingestion.pipeline import parse_published_date, run_ingestion
+from app.ingestion.pipeline import parse_published_date, run_ingestion, get_last_published_date
 from app.models.paper import Paper
 
 
@@ -91,3 +91,31 @@ class TestRunIngestion:
             mock_gs.return_value.__enter__ = MagicMock(return_value=pipeline_session)
             mock_gs.return_value.__exit__ = MagicMock(return_value=False)
             assert run_ingestion() == (0, [])
+
+
+class TestGetLastPublishedDate:
+
+    def test_returns_none_when_empty(self, pipeline_engine, pipeline_session):
+        with patch("app.ingestion.pipeline.init_db"), \
+             patch("app.ingestion.pipeline.get_session") as mock_gs:
+            mock_gs.return_value.__enter__ = MagicMock(return_value=pipeline_session)
+            mock_gs.return_value.__exit__ = MagicMock(return_value=False)
+            result = get_last_published_date()
+        assert result is None
+
+    def test_returns_max_date(self, pipeline_engine, pipeline_session):
+        paper = Paper(
+            arxiv_id="2401.00001", title="Test", authors="A",
+            abstract="X", full_text="", pdf_url="",
+            published_date=date(2026, 5, 10),
+            ingested_at=datetime.now(timezone.utc),
+            buckets='["general_ai"]',
+        )
+        pipeline_session.add(paper)
+        pipeline_session.commit()
+        with patch("app.ingestion.pipeline.init_db"), \
+             patch("app.ingestion.pipeline.get_session") as mock_gs:
+            mock_gs.return_value.__enter__ = MagicMock(return_value=pipeline_session)
+            mock_gs.return_value.__exit__ = MagicMock(return_value=False)
+            result = get_last_published_date()
+        assert result == date(2026, 5, 10)

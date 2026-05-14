@@ -108,7 +108,7 @@ def resync():
 @click.option("--host", default=None)
 @click.option("--port", default=None, type=int)
 def serve(host, port):
-    """Start the local dashboard with auto-ingest scheduler (1 paper/min)."""
+    """Start the dashboard server with auto-ingest scheduler."""
     import uvicorn
     from app.main import create_app, _start_scheduler
     app = create_app()
