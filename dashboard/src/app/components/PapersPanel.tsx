@@ -29,7 +29,17 @@ function PaperCard({ paper, query }: { paper: Paper; query: string }) {
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-3">
-            <h4 className="text-[#0F172A]" style={{ fontWeight: 600 }}>{highlight(paper.title, query)}</h4>
+            <h4>
+              <a
+                href={`https://arxiv.org/abs/${paper.arxiv_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#0F172A] hover:text-[#6366F1] hover:underline transition-colors duration-200"
+                style={{ fontWeight: 600 }}
+              >
+                {highlight(paper.title, query)}
+              </a>
+            </h4>
             <a href={`https://arxiv.org/abs/${paper.arxiv_id}`} target="_blank" rel="noopener noreferrer"
               className="flex-shrink-0 w-7 h-7 rounded-lg border border-[#E2E8F0] flex items-center justify-center text-[#94A3B8] hover:text-[#6366F1] hover:border-[#6366F1] transition-colors">
               <ExternalLink size={13} />
@@ -65,18 +75,17 @@ function PaperCard({ paper, query }: { paper: Paper; query: string }) {
   );
 }
 
-export function PapersPanel({ onPapersLoaded }: { onPapersLoaded?: (count: number) => void }) {
+export function PapersPanel({ onPapersLoaded, initialQuery }: { onPapersLoaded?: (count: number) => void; initialQuery?: string }) {
   const [bucket, setBucket] = useState<BucketKey | 'all'>('all');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<PageSize>(20);
   const [papers, setPapers] = useState<Paper[]>([]);
   const [total, setTotal] = useState(0);
-  // initialLoad: true until the very first successful fetch (shows full-page spinner)
-  // fetching: true on subsequent fetches (keeps existing content visible, dimmed)
   const [initialLoad, setInitialLoad] = useState(true);
   const [fetching, setFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery ?? '');
+  const [serverSearch, setServerSearch] = useState(initialQuery ?? '');
 
   const cbRef = useRef(onPapersLoaded);
   cbRef.current = onPapersLoaded;
@@ -85,7 +94,7 @@ export function PapersPanel({ onPapersLoaded }: { onPapersLoaded?: (count: numbe
     let cancelled = false;
     setFetching(true);
     setError(null);
-    fetchPapers(bucket === 'all' ? undefined : bucket, page, pageSize)
+    fetchPapers(bucket === 'all' ? undefined : bucket, page, pageSize, serverSearch || undefined)
       .then(data => {
         if (cancelled) return;
         setPapers(data.results);
@@ -100,21 +109,18 @@ export function PapersPanel({ onPapersLoaded }: { onPapersLoaded?: (count: numbe
         }
       });
     return () => { cancelled = true; };
-  }, [bucket, page, pageSize]);
+  }, [bucket, page, pageSize, serverSearch]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setServerSearch(query);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const goTo = (n: number) => setPage(Math.min(Math.max(1, n), totalPages));
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return papers;
-    return papers.filter(p =>
-      p.title.toLowerCase().includes(q) ||
-      (p.abstract ?? '').toLowerCase().includes(q) ||
-      (p.authors ?? '').toLowerCase().includes(q) ||
-      p.arxiv_id.toLowerCase().includes(q)
-    );
-  }, [papers, query]);
 
   const pageNums = useMemo(() => {
     const s = Math.max(1, page - 2), e = Math.min(totalPages, page + 2);
@@ -143,11 +149,11 @@ export function PapersPanel({ onPapersLoaded }: { onPapersLoaded?: (count: numbe
         <div className="relative flex-1 min-w-[200px]">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#94A3B8]" />
           <input type="text" value={query} onChange={e => setQuery(e.target.value)}
-            placeholder="Filter by title, abstract, author…"
+            placeholder="Search papers by title, abstract, arXiv ID…"
             className="w-full pl-9 pr-4 py-2.5 rounded-xl border border-[#E2E8F0] bg-white text-sm text-[#0F172A] placeholder:text-[#CBD5E1] focus:outline-none focus:ring-2 focus:ring-[#6366F1]/30 focus:border-[#6366F1] transition-all" />
         </div>
         <div className="flex items-center gap-1.5 flex-wrap">
-          <button type="button" onClick={() => { setBucket('all'); setPage(1); }}
+          <button type="button" onClick={() => { setBucket('all'); setPage(1); setQuery(''); setServerSearch(''); }}
             className="px-3 py-2 rounded-xl text-sm transition-all"
             style={{ background: bucket === 'all' ? '#0F172A' : 'white', color: bucket === 'all' ? 'white' : '#64748B', border: `1px solid ${bucket === 'all' ? '#0F172A' : '#E2E8F0'}`, fontWeight: bucket === 'all' ? 600 : 400 }}>
             All ({total})
@@ -156,7 +162,7 @@ export function PapersPanel({ onPapersLoaded }: { onPapersLoaded?: (count: numbe
             const cfg = BUCKET_CONFIG[key];
             const active = bucket === key;
             return (
-              <button key={key} type="button" onClick={() => { setBucket(key); setPage(1); }}
+              <button key={key} type="button" onClick={() => { setBucket(key); setPage(1); setQuery(''); setServerSearch(''); }}
                 className="px-3 py-2 rounded-xl text-sm transition-all flex items-center gap-1.5"
                 style={{ background: active ? cfg.colorLight : 'white', color: active ? cfg.color : '#64748B', border: `1px solid ${active ? `${cfg.color}50` : '#E2E8F0'}`, fontWeight: active ? 600 : 400 }}>
                 <div className="w-2 h-2 rounded-full" style={{ background: cfg.color }} />
@@ -176,16 +182,16 @@ export function PapersPanel({ onPapersLoaded }: { onPapersLoaded?: (count: numbe
         <div className="bg-white rounded-2xl border border-[#E2E8F0] p-12 text-center">
           <p className="text-[#94A3B8]">Error: {error}</p>
         </div>
-      ) : filtered.length === 0 ? (
+      ) : papers.length === 0 ? (
         <div className="bg-white rounded-2xl border border-[#E2E8F0] p-12 text-center">
           <Search size={32} className="text-[#CBD5E1] mx-auto mb-3" />
           <p className="text-[#94A3B8]">No papers match your search</p>
-          <button type="button" onClick={() => setQuery('')} className="mt-2 text-sm text-[#6366F1] hover:underline">Clear search</button>
+          <button type="button" onClick={() => { setQuery(''); setServerSearch(''); setPage(1); }} className="mt-2 text-sm text-[#6366F1] hover:underline">Clear search</button>
         </div>
       ) : (
         // Keep existing content visible while fetching — prevents height collapse & scroll-to-top
         <div className={`space-y-3 transition-opacity duration-150 ${fetching ? 'opacity-40 pointer-events-none' : 'opacity-100'}`}>
-          {filtered.map(p => <PaperCard key={p.id} paper={p} query={query} />)}
+          {papers.map(p => <PaperCard key={p.id} paper={p} query={serverSearch} />)}
         </div>
       )}
 

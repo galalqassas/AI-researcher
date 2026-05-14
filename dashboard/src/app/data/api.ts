@@ -99,9 +99,10 @@ export const BUCKET_CONFIG = {
 
 // ── API functions ───────────────────────────────────────────────────────────
 
-export async function fetchPapers(bucket?: string, page = 1, limit = 50): Promise<{ total: number; results: Paper[] }> {
+export async function fetchPapers(bucket?: string, page = 1, limit = 50, search?: string): Promise<{ total: number; results: Paper[] }> {
   const params = new URLSearchParams();
   if (bucket) params.set('bucket', bucket);
+  if (search) params.set('search', search);
   params.set('page', String(page));
   params.set('limit', String(limit));
   return apiFetch(`/papers?${params}`);

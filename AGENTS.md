@@ -17,7 +17,7 @@ All five pipeline stages have been tested end-to-end with real data:
 | **Report** | ✅ Working | Per-paper summaries (light model), per-bucket summaries + cross-domain synthesis (heavy model), LLM response cache, token cap |
 | **API** | ✅ Working | All endpoints returning JSON |
 | **Embeddings** | ✅ Synced | 947/947 papers embedded — SQLite and Pinecone in sync |
-| **Tests** | ✅ 124 passing | Full pytest suite: `test_routes.py` (11), `test_arxiv_client.py` (17+), `test_main.py` (4), `test_pinecone_store.py` (13), plus existing unit tests |
+| **Tests** | ✅ 126 passing | Full pytest suite: `test_routes.py` (13), `test_arxiv_client.py` (17+), `test_main.py` (4), `test_pinecone_store.py` (13), plus existing unit tests |
 
 ## Tech Stack
 
@@ -129,10 +129,12 @@ The React SPA is served by FastAPI in production via a catch-all `/{full_path:pa
 | Panel | Features |
 |---|---|
 | **Dashboard Home** | Stat cards (total papers, per-bucket counts), area chart (papers over time), donut chart (bucket distribution), recent papers list, latest pipeline runs |
-| **Papers** | Bucket filter chips, client-side text search with highlight, expandable abstracts, arXiv external links, live paper count |
+| **Papers** | Bucket filter chips, server-side text search (ILIKE on title/abstract/arxiv_id/authors), expandable abstracts, clickable title links to arXiv, live paper count |
 | **Reports** | Period selector (5 periods), report history list, rich report viewer modal with HTML export + print styles, markdown rendering via `marked` |
 | **Pipeline** | Run history with expandable stage breakdowns, duration bar chart, "Run Pipeline" trigger button |
 | **Global Search** | ⌘K / button-activated search modal calling `/search` with hybrid BM25 + vector search; result click navigates to Papers panel with arXiv ID pre-filled in the local filter |
+
+**Search navigation state**: App.tsx uses a compound `{query, nonce}` state (`searchNav`) with `key={nonce}` on `PapersPanel` to force remount on every search result click. This handles repeated clicks on the same result correctly. Sidebar Papers nav resets `searchNav` to empty query.
 
 **CORS origins** (hardcoded in `app/main.py`): `https://ai-research-mvp.vercel.app`, `http://localhost:5173`
 
@@ -196,7 +198,7 @@ SQLite is permissive, so these mismatches do not cause runtime errors, but futur
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/papers` | Paginated paper listing with optional bucket filter (`?bucket=...&page=...&limit=...`) |
+| GET | `/papers` | Paginated paper listing with optional bucket filter (`?bucket=...`) and text search (`?search=...&page=...&limit=...`) |
 | GET | `/papers/stats` | Paper counts: total, per-bucket, and per-month (for dashboard charts) |
 | POST | `/ingest` | Trigger ingestion → dedup → embed → classify. Returns JSON `{status, paper_count, stages}` |
 | POST | `/reports/generate?period=7d` | Generate report. Returns JSON `{id, period, paper_count}` or `{error}` on failure |

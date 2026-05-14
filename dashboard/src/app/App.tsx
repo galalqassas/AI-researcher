@@ -18,7 +18,7 @@ const NAV = [
   { key: 'pipeline' as Page, label: 'Pipeline', icon: Activity },
 ];
 
-function SearchPapersInline({ onClose }: { onClose: () => void }) {
+function SearchPapersInline({ onClose, onNavigate }: { onClose: () => void; onNavigate: (arxivId: string) => void }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -64,7 +64,7 @@ function SearchPapersInline({ onClose }: { onClose: () => void }) {
         {results.length > 0 && (
           <div className="divide-y divide-[#F1F5F9] max-h-96 overflow-y-auto">
             {results.map(paper => (
-              <div key={paper.id} className="flex items-start gap-3 px-4 py-3 hover:bg-[#F8FAFC] cursor-pointer transition-colors" onClick={onClose}>
+              <div key={paper.id} className="flex items-start gap-3 px-4 py-3 hover:bg-[#F8FAFC] cursor-pointer transition-colors" onClick={() => { onNavigate(paper.arxiv_id); onClose(); }}>
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: '#EEF2FF' }}>
                   <BookOpen size={13} style={{ color: '#6366F1' }} />
                 </div>
@@ -79,8 +79,8 @@ function SearchPapersInline({ onClose }: { onClose: () => void }) {
         )}
         {!query && (
           <div className="px-4 py-6">
-            <p className="text-[#94A3B8] text-xs mb-3" style={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Type to search papers using hybrid BM25 + vector search
+            <p className="text-[#334155] text-sm mb-3" style={{ fontWeight: 600, letterSpacing: '0.01em' }}>
+              Search papers using Hybrid BM25 + Vector Search
             </p>
           </div>
         )}
@@ -92,6 +92,7 @@ function SearchPapersInline({ onClose }: { onClose: () => void }) {
 export default function App() {
   const [page, setPage] = useState<Page>('dashboard');
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchNav, setSearchNav] = useState<{query: string; nonce: number}>({query: '', nonce: 0});
   const [pipelineRuns, setPipelineRuns] = useState<PipelineRun[]>([]);
   const [totalPapers, setTotalPapers] = useState(0);
   const [runsLoaded, setRunsLoaded] = useState(false);
@@ -173,7 +174,12 @@ export default function App() {
             return (
               <button
                 key={key}
-                onClick={() => setPage(key)}
+                onClick={() => {
+                  setPage(key);
+                  if (key === 'papers') {
+                    setSearchNav(prev => ({query: '', nonce: prev.nonce + 1}));
+                  }
+                }}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-left group"
                 style={{
                   background: active ? 'linear-gradient(135deg, #EEF2FF, #F5F3FF)' : 'transparent',
@@ -259,13 +265,13 @@ export default function App() {
         <div className="flex-1 overflow-y-auto">
           {page === 'dashboard' && <DashboardHome onPapersLoaded={setTotalPapers} />}
           {page === 'reports' && <ReportsPanel />}
-          {page === 'papers' && <PapersPanel onPapersLoaded={setTotalPapers} />}
+          {page === 'papers' && <PapersPanel key={searchNav.nonce} onPapersLoaded={setTotalPapers} initialQuery={searchNav.query} />}
           {page === 'pipeline' && <PipelinePanel />}
         </div>
       </main>
 
       {/* Search modal */}
-      {searchOpen && <SearchPapersInline onClose={() => setSearchOpen(false)} />}
+      {searchOpen && <SearchPapersInline onClose={() => setSearchOpen(false)} onNavigate={(arxivId) => { setSearchNav(prev => ({query: arxivId, nonce: prev.nonce + 1})); setPage('papers'); setSearchOpen(false); }} />}
     </div>
   );
 }

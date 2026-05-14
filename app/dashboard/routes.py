@@ -14,14 +14,23 @@ router = APIRouter()
 @router.get("/papers")
 async def list_papers(
     bucket: str = Query(default=None, description="Filter by bucket key"),
+    search: str = Query(default=None, description="Search papers by title, abstract, arXiv ID, or authors"),
     page: int = Query(default=1, ge=1, description="Page number"),
     limit: int = Query(default=50, ge=1, le=200, description="Results per page"),
 ):
-    """List papers with optional bucket filter and pagination."""
+    """List papers with optional bucket filter, text search, and pagination."""
     db = Session()
     query = db.query(Paper)
     if bucket and bucket in BUCKETS:
         query = query.filter(Paper.buckets.contains(f'"{bucket}"'))
+    if search:
+        pattern = f"%{search}%"
+        query = query.filter(
+            (Paper.title.ilike(pattern)) |
+            (Paper.abstract.ilike(pattern)) |
+            (Paper.arxiv_id.ilike(pattern)) |
+            (Paper.authors.ilike(pattern))
+        )
     total = query.count()
     papers = query.order_by(Paper.ingested_at.desc()).offset((page - 1) * limit).limit(limit).all()
     db.close()
