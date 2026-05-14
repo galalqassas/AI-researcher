@@ -97,6 +97,22 @@ def run_pipeline(max_results, period, query, bucket):
 
 
 @cli.command()
+@click.option("--days", default=30, type=int, help="Number of days to backfill")
+@click.option("--max-results", default=100, type=int, help="Max papers per bucket")
+def backfill(days, max_results):
+    """Backfill papers from the last N days across all buckets."""
+    from app.backfill import run_backfill
+    result = run_backfill(days=days, max_results_per_bucket=max_results)
+    click.echo(f"Backfill complete:")
+    click.echo(f"  Ingested: {result['ingested']} papers")
+    for bucket, count in result.get("per_bucket", {}).items():
+        click.echo(f"    {bucket}: {count}")
+    click.echo(f"  Deduplicated: {result['deduplicated']}")
+    click.echo(f"  Embedded: {result['embedded']}")
+    click.echo(f"  Classified: {result['classified']}")
+
+
+@cli.command()
 def resync():
     """Re-sync embeddings from SQLite to Pinecone (recover from dual-write drift)."""
     from app.classification.pinecone_store import resync_embeddings
