@@ -339,16 +339,18 @@ export function DashboardHome({ onPapersLoaded }: DashboardHomeProps) {
               </div>
             ))}
           </div>
-          {lastRun?.stages && lastRun.status === 'success' && (
+          {lastRun?.stages && lastRun.status === 'success' && Object.values(lastRun.stages).some(v => typeof v === 'number') && (
             <div className="mt-4 p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
               <p className="text-[#64748B] text-xs mb-2" style={{ fontWeight: 600 }}>Last run stages</p>
               <div className="grid grid-cols-4 gap-2">
-                {Object.entries(lastRun.stages).map(([stage, count]) => (
-                  <div key={stage} className="text-center">
-                    <p className="text-[#0F172A] text-base" style={{ fontWeight: 700 }}>{count}</p>
-                    <p className="text-[#94A3B8]" style={{ fontSize: '0.68rem' }}>{stage}</p>
-                  </div>
-                ))}
+                {Object.entries(lastRun.stages)
+                  .filter(([, count]) => typeof count === 'number')
+                  .map(([stage, count]) => (
+                    <div key={stage} className="text-center">
+                      <p className="text-[#0F172A] text-base" style={{ fontWeight: 700 }}>{count}</p>
+                      <p className="text-[#94A3B8]" style={{ fontSize: '0.68rem' }}>{stage}</p>
+                    </div>
+                  ))}
               </div>
             </div>
           )}
