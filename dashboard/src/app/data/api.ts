@@ -54,7 +54,7 @@ export interface PaperStats {
   total: number;
   today: number;
   per_bucket: Record<string, number>;
-  per_date: { month: string; count: number; general_ai: number; autonomous_agents: number; ai_finance: number }[];
+  per_date: { date: string; count: number; general_ai: number; autonomous_agents: number; ai_finance: number }[];
 }
 
 export interface SearchResult {

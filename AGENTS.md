@@ -128,7 +128,7 @@ The React SPA is served by FastAPI in production via a catch-all `/{full_path:pa
 
 | Panel | Features |
 |---|---|
-| **Dashboard Home** | Stat cards (total papers, per-bucket counts), area chart (papers over time), donut chart (bucket distribution), recent papers list, latest pipeline runs |
+| **Dashboard Home** | Stat cards (total papers, per-bucket counts), daily area chart (papers ingested over time), donut chart (bucket distribution), recent papers list, latest pipeline runs |
 | **Papers** | Bucket filter chips, server-side text search (ILIKE on title/abstract/arxiv_id/authors), expandable abstracts, clickable title links to arXiv, live paper count |
 | **Reports** | Period selector (5 periods), report history list, rich report viewer modal with HTML export + print styles, markdown rendering via `marked` |
 | **Pipeline** | Run history with expandable stage breakdowns, duration bar chart, "Run Pipeline" trigger button |
@@ -199,7 +199,7 @@ SQLite is permissive, so these mismatches do not cause runtime errors, but futur
 | Method | Path | Description |
 |---|---|---|
 | GET | `/papers` | Paginated paper listing with optional bucket filter (`?bucket=...`) and text search (`?search=...&page=...&limit=...`) |
-| GET | `/papers/stats` | Paper counts: total, per-bucket, and per-month (for dashboard charts) |
+| GET | `/papers/stats` | Paper counts: total, per-bucket, and per-date (daily, for dashboard charts) |
 | POST | `/ingest` | Trigger ingestion → dedup → embed → classify. Returns JSON `{status, paper_count, stages}` |
 | POST | `/reports/generate?period=7d` | Generate report. Returns JSON `{id, period, paper_count}` or `{error}` on failure |
 | GET | `/search?q=...&limit=10` | Hybrid search: embed query, search Pinecone + FTS5, merge via RRF, return ranked JSON |
@@ -278,6 +278,17 @@ tests/
 - **`check_same_thread=False`** on SQLite engines used in route tests (FastAPI runs in threads; required alongside `StaticPool`)
 - **Session isolation**: Tests that modify DB state use separate sessions; verify via raw SQL on engine connections when sessions may be closed
 - **Monkey-patch `Session.__call__`** (not `patch`) for cross-thread DB interception in `test_routes.py`. `patch` targets are thread-local; replacing the class method works across threads.
+
+## CI/CD
+
+| Workflow | File | Triggers | What it does |
+|---|---|---|---|
+| **Tests** | `.github/workflows/tests.yml` | Push to any branch, PR to `main` | Installs Python deps and runs `pytest tests/ -q` on Ubuntu with Python 3.11 |
+
+**Current gaps:**
+- No frontend build / TypeScript check in CI (only local `vite build`)
+- No linting or formatting gates
+- No Docker or automated deployment step — production deploy is manual (`python run.py serve`)
 
 ## Key Dependencies
 

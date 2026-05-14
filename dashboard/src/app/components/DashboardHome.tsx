@@ -150,14 +150,18 @@ export function DashboardHome({ onPapersLoaded }: DashboardHomeProps) {
   const lastRun = runs[0];
   const successRate = runs.length ? Math.round((runs.filter(r => r.status === 'success').length / runs.length) * 100) : 0;
 
-  // Build chart data from stats
-  const chartData = stats.per_date.map(d => ({
-    month: d.month.slice(5), // "MM" or "YYYY-MM" → show "MM"
-    general_ai: d.general_ai || 0,
-    autonomous_agents: d.autonomous_agents || 0,
-    ai_finance: d.ai_finance || 0,
-    total: d.count,
-  }));
+  // Build chart data from stats — daily granularity
+  const chartData = stats.per_date.map(d => {
+    const dt = new Date(d.date + 'T00:00:00');
+    const label = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return {
+      date: label,
+      general_ai: d.general_ai || 0,
+      autonomous_agents: d.autonomous_agents || 0,
+      ai_finance: d.ai_finance || 0,
+      total: d.count,
+    };
+  });
 
   const pieData = (Object.entries(stats.per_bucket) as [string, number][]).map(([key, val]) => ({
     name: BUCKET_CONFIG[key as BucketKey]?.label ?? key,
@@ -239,7 +243,7 @@ export function DashboardHome({ onPapersLoaded }: DashboardHomeProps) {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-[#0F172A]" style={{ fontWeight: 600 }}>Papers Ingested Over Time</h3>
-              <p className="text-[#94A3B8] text-xs mt-0.5">Monthly breakdown by research bucket</p>
+              <p className="text-[#94A3B8] text-xs mt-1">Daily breakdown by research bucket</p>
             </div>
             <div className="flex items-center gap-3">
               {Object.entries(BUCKET_CONFIG).map(([key, cfg]) => (
@@ -254,17 +258,17 @@ export function DashboardHome({ onPapersLoaded }: DashboardHomeProps) {
             <ResponsiveContainer width="100%" height={220}>
               <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                 <defs>
-                  <linearGradient id="gradAI" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#6366F1" stopOpacity={0.25} /><stop offset="95%" stopColor="#6366F1" stopOpacity={0} /></linearGradient>
-                  <linearGradient id="gradAgents" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10B981" stopOpacity={0.25} /><stop offset="95%" stopColor="#10B981" stopOpacity={0} /></linearGradient>
-                  <linearGradient id="gradFinance" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#F59E0B" stopOpacity={0.25} /><stop offset="95%" stopColor="#F59E0B" stopOpacity={0} /></linearGradient>
+                  <linearGradient id="gradAI" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#6366F1" stopOpacity={0.325} /><stop offset="95%" stopColor="#6366F1" stopOpacity={0.025} /></linearGradient>
+                  <linearGradient id="gradAgents" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#10B981" stopOpacity={0.325} /><stop offset="95%" stopColor="#10B981" stopOpacity={0.025} /></linearGradient>
+                  <linearGradient id="gradFinance" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#F59E0B" stopOpacity={0.325} /><stop offset="95%" stopColor="#F59E0B" stopOpacity={0.025} /></linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
-                <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: '#94A3B8' }} axisLine={false} tickLine={false} allowDecimals={false} />
                 <Tooltip content={<CustomTooltip />} />
-                <Area type="monotone" dataKey="general_ai" name="General AI" stroke="#6366F1" strokeWidth={2} fill="url(#gradAI)" />
-                <Area type="monotone" dataKey="autonomous_agents" name="Autonomous Agents" stroke="#10B981" strokeWidth={2} fill="url(#gradAgents)" />
-                <Area type="monotone" dataKey="ai_finance" name="AI Finance" stroke="#F59E0B" strokeWidth={2} fill="url(#gradFinance)" />
+                <Area type="monotone" dataKey="general_ai" name="General AI" stroke="#6366F1" strokeWidth={2.75} fill="url(#gradAI)" />
+                <Area type="monotone" dataKey="autonomous_agents" name="Autonomous Agents" stroke="#10B981" strokeWidth={2.75} fill="url(#gradAgents)" />
+                <Area type="monotone" dataKey="ai_finance" name="AI Finance" stroke="#F59E0B" strokeWidth={2.75} fill="url(#gradFinance)" />
               </AreaChart>
             </ResponsiveContainer>
           ) : (

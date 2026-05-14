@@ -53,7 +53,7 @@ async def list_papers(
 
 @router.get("/papers/stats")
 async def paper_stats():
-    """Paper counts: total, per bucket, and per month for charts."""
+    """Paper counts: total, per bucket, and per date for charts."""
     db = Session()
     total = db.query(Paper).count()
     # Papers ingested today
@@ -67,22 +67,22 @@ async def paper_stats():
         per_bucket[bucket_key] = db.query(Paper).filter(
             Paper.buckets.contains(f'"{bucket_key}"')
         ).count()
-    # Per-month aggregation for charts
+    # Per-day aggregation for charts
     per_date_rows = db.query(
-        func.strftime("%Y-%m", Paper.ingested_at).label("month"),
+        func.strftime("%Y-%m-%d", Paper.ingested_at).label("date"),
         func.count(Paper.id).label("count"),
-    ).filter(Paper.ingested_at.isnot(None)).group_by("month").order_by("month").all()
-    # Also get per-month per-bucket counts
+    ).filter(Paper.ingested_at.isnot(None)).group_by("date").order_by("date").all()
+    # Also get per-day per-bucket counts
     per_date = []
-    for month, count in per_date_rows:
+    for date, count in per_date_rows:
         bucket_counts = {}
         for bk in BUCKETS:
             bucket_counts[bk] = db.query(Paper).filter(
                 Paper.ingested_at.isnot(None),
-                func.strftime("%Y-%m", Paper.ingested_at) == month,
+                func.strftime("%Y-%m-%d", Paper.ingested_at) == date,
                 Paper.buckets.contains(f'"{bk}"'),
             ).count()
-        per_date.append({"month": month, "count": count, **bucket_counts})
+        per_date.append({"date": date, "count": count, **bucket_counts})
     db.close()
     return JSONResponse({
         "total": total,
