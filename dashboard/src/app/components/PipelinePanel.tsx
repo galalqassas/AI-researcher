@@ -102,7 +102,7 @@ export function PipelinePanel() {
   };
 
   const silentRefresh = () => {
-    fetchPipelineRuns(20).then(setRuns).catch(() => {});
+    fetchPipelineRuns(20).then(data => { setRuns(data); setError(null); }).catch(() => {});
   };
 
   useEffect(() => { refresh(); }, []);

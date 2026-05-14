@@ -107,11 +107,7 @@ function fmtTime(dt: string) {
   return new Date(dt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-interface DashboardHomeProps {
-  onPapersLoaded?: (count: number) => void;
-}
-
-export function DashboardHome({ onPapersLoaded }: DashboardHomeProps) {
+export function DashboardHome() {
   const [stats, setStats] = useState<PaperStats | null>(null);
   const [runs, setRuns] = useState<PipelineRun[]>([]);
   const [reportCount, setReportCount] = useState<number>(0);
@@ -127,7 +123,6 @@ export function DashboardHome({ onPapersLoaded }: DashboardHomeProps) {
       setStats(s);
       setRuns(r);
       setReportCount(reports.length);
-      if (onPapersLoaded) onPapersLoaded(s.total);
     } catch (e: any) {
       if (!stats) setError(e?.message ?? 'Failed to load');
     }
