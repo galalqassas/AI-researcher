@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 from sqlalchemy import create_engine, text
+from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base
@@ -47,7 +48,7 @@ class TestGetPapersForPeriod:
 
     @pytest.fixture
     def period_engine(self):
-        eng = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+        eng = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
         Base.metadata.create_all(eng)
         with eng.connect() as conn:
             conn.execute(text("CREATE VIRTUAL TABLE IF NOT EXISTS papers_fts USING fts5(title, abstract)"))

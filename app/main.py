@@ -20,7 +20,11 @@ def _mark_stale_runs_failed():
             run.status = "error"
             run.finished_at = now
             if run.started_at:
-                run.duration_s = (now - run.started_at).total_seconds()
+                # SQLite returns naive datetimes; make them UTC-aware
+                started = run.started_at
+                if started.tzinfo is None:
+                    started = started.replace(tzinfo=timezone.utc)
+                run.duration_s = (now - started).total_seconds()
             run.error = "Pipeline interrupted — server restarted while run was in progress"
         session.commit()
     except Exception:

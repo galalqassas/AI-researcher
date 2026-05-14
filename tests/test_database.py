@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import pytest
 from sqlalchemy import create_engine, text
+from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base, get_session, init_db, rebuild_fts
@@ -14,7 +15,7 @@ from app.models.paper import Paper
 
 @pytest.fixture
 def db_engine():
-    eng = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    eng = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(eng)
     with eng.connect() as conn:
         conn.execute(text("CREATE VIRTUAL TABLE IF NOT EXISTS papers_fts USING fts5(title, abstract)"))
@@ -56,7 +57,7 @@ class TestInitDb:
 class TestGetSession:
 
     def test_rollback_on_exception(self):
-        eng = create_engine("sqlite:///:memory:")
+        eng = create_engine("sqlite:///:memory:", poolclass=StaticPool)
         Base.metadata.create_all(eng)
         S = sessionmaker(bind=eng)
         try:

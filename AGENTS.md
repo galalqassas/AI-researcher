@@ -16,6 +16,8 @@ All five pipeline stages have been tested end-to-end with real data:
 | **Classify** | ✅ Working | Hybrid RRF classification (dense cosine + BM25 via FTS5), borderline reranking, bucket embedding cache |
 | **Report** | ✅ Working | Per-paper summaries (light model), per-bucket summaries + cross-domain synthesis (heavy model), LLM response cache, token cap |
 | **API** | ✅ Working | All endpoints returning JSON |
+| **Embeddings** | ✅ Synced | 947/947 papers embedded — SQLite and Pinecone in sync |
+| **Tests** | ✅ 124 passing | Full pytest suite: `test_routes.py` (11), `test_arxiv_client.py` (17+), `test_main.py` (4), `test_pinecone_store.py` (13), plus existing unit tests |
 
 ## Tech Stack
 
@@ -130,7 +132,7 @@ The React SPA is served by FastAPI in production via a catch-all `/{full_path:pa
 | **Papers** | Bucket filter chips, client-side text search with highlight, expandable abstracts, arXiv external links, live paper count |
 | **Reports** | Period selector (5 periods), report history list, rich report viewer modal with HTML export + print styles, markdown rendering via `marked` |
 | **Pipeline** | Run history with expandable stage breakdowns, duration bar chart, "Run Pipeline" trigger button |
-| **Global Search** | ⌘K / button-activated search modal calling `/search` with hybrid BM25 + vector search |
+| **Global Search** | ⌘K / button-activated search modal calling `/search` with hybrid BM25 + vector search; result click navigates to Papers panel with arXiv ID pre-filled in the local filter |
 
 **CORS origins** (hardcoded in `app/main.py`): `https://ai-research-mvp.vercel.app`, `http://localhost:5173`
 
@@ -203,6 +205,8 @@ SQLite is permissive, so these mismatches do not cause runtime errors, but futur
 | GET | `/reports` | List all reports (JSON array) |
 | GET | `/reports/{id}` | Get single report (JSON). Returns 404 if not found |
 
+All endpoints are covered by `test_routes.py`.
+
 ## Code Conventions
 
 - Config centralized in `app/config.py`; all settings read from `.env` via `python-dotenv`
@@ -211,7 +215,7 @@ SQLite is permissive, so these mismatches do not cause runtime errors, but futur
 - Logging uses `logging.getLogger(__name__)` — no print statements
 - Embeddings serialized to bytes via `struct.pack` / deserialized via `struct.unpack` for SQLite; stored as float arrays in Pinecone
 - Bucket assignments stored as JSON strings in the `buckets` column
-- Pinecone client is a module-level singleton (`_pc_client` in `pinecone_store.py`) initialized eagerly at import time. All functions handle `None` client gracefully.
+- Pinecone client is a module-level singleton (`_pc_client` in `pinecone_store.py`) initialized eagerly at import time. All functions handle `None` client gracefully. Every function in `pinecone_store.py` is unit-tested in `test_pinecone_store.py` using mocked Pinecone SDK calls.
 - CLI built with Click decorators in `run.py`; API routes in `app/dashboard/routes.py`
 - LLM prompts stored as constants in `app/reports/prompts.py`
 - Cosine similarity implemented in numpy (not scikit-learn)
@@ -237,7 +241,7 @@ SQLite is permissive, so these mismatches do not cause runtime errors, but futur
 | API routes block synchronously | Medium | `POST /ingest` blocks the server for the full pipeline duration with no user feedback. Report generation has a configurable timeout (`REPORT_TIMEOUT`, default 1 hour). |
 | `OLLAMA_MODEL_LIGHT` defaults to heavy model | Low | By default both light and heavy tasks use the same model (`gemma4:31b-cloud`). Cost savings only kick in when `OLLAMA_MODEL_LIGHT` is set to a smaller model in `.env`. |
 | Migration/model mismatches | Low | Initial migration has nullable and type mismatches vs. models (see table above). SQLite is permissive so it does not break at runtime. |
-| Frontend stale reference | Low | `dashboard/src/app/components/PapersPanel.tsx` line 171 references "Qdrant" but the backend uses Pinecone. |
+
 
 ## Testing
 
@@ -248,26 +252,30 @@ Tests live in `tests/`. Run with `python -m pytest tests/ -v`. The test suite us
 ```
 tests/
 ├── conftest.py               # Shared fixtures (DB, embeddings, paper factory)
-├── test_arxiv_client.py       # matches_keywords, build_query
+├── test_arxiv_client.py       # matches_keywords, build_query, fetch_papers
 ├── test_pdf_extractor.py       # download_pdf, extract_text
 ├── test_pipeline.py            # parse_published_date, run_ingestion
 ├── test_embedder.py            # embed_to_bytes, bytes_to_embed, get_embedding, embed_all_papers
 ├── test_classifier.py          # cosine_similarity, _sanitize_fts_query, classify_all_papers, compute_bucket_embeddings
 ├── test_dedup.py               # find_duplicates, deduplicate
+├── test_pinecone_store.py      # get_client, get_index, ensure_collection, upsert, search, delete, resync
 ├── test_generator.py           # format_papers, build_html_report, LLM cache, generate_report
 ├── test_metrics.py             # track_pipeline context manager
 ├── test_alerts.py              # send_alert
 ├── test_database.py            # init_db, get_session, rebuild_fts
-└── test_routes.py              # FastAPI TestClient endpoints
+├── test_main.py               # _mark_stale_runs_failed, create_app startup logic
+└── test_routes.py              # FastAPI TestClient endpoints (all routes covered)
 ```
 
 ### Key Testing Patterns
 
 - **In-memory SQLite** (`sqlite:///:memory:`) with FTS5 for all DB-dependent tests
-- **`unittest.mock.patch`** for all external services (Ollama, Pinecone, arXiv API, HTTP)
+- **`poolclass=StaticPool`** (SQLAlchemy) for any in-memory engine used with FastAPI `TestClient`. SQLite `:memory:` databases are per-connection; `StaticPool` forces all threads (including TestClient's background event-loop thread) to share the same physical connection so tables remain visible.
+- **`unittest.mock.patch`** for all external services (Ollama, Pinecone SDK, arXiv API, HTTP)
 - **`conftest.py`** provides `db_session`, `make_paper`, `sample_embedding`, `sample_embedding_bytes` fixtures
-- **`check_same_thread=False`** on SQLite engines used in route tests (FastAPI runs in threads)
+- **`check_same_thread=False`** on SQLite engines used in route tests (FastAPI runs in threads; required alongside `StaticPool`)
 - **Session isolation**: Tests that modify DB state use separate sessions; verify via raw SQL on engine connections when sessions may be closed
+- **Monkey-patch `Session.__call__`** (not `patch`) for cross-thread DB interception in `test_routes.py`. `patch` targets are thread-local; replacing the class method works across threads.
 
 ## Key Dependencies
 

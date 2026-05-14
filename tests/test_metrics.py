@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 from sqlalchemy import create_engine, text
+from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import sessionmaker
 
 from app.database import Base
@@ -13,7 +14,7 @@ from app.models.paper import PipelineRun
 
 @pytest.fixture
 def metrics_engine():
-    eng = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    eng = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(eng)
     with eng.connect() as conn:
         conn.execute(text("CREATE VIRTUAL TABLE IF NOT EXISTS papers_fts USING fts5(title, abstract)"))
