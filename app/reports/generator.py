@@ -265,7 +265,7 @@ def generate_report(period: str) -> dict:
         session.add(report)
         session.commit()
 
-        result = {"id": report.id, "period": period, "papers": len(papers)}
+        result = {"id": report.id, "period": period, "paper_count": len(papers)}
         log.info(f"Report generated: {result}")
         return result
     except Exception:

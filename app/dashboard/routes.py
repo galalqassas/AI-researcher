@@ -144,8 +144,8 @@ async def trigger_report(period: str = "7d"):
                     )
             if "error" in result:
                 return JSONResponse({"error": result["error"]}, status_code=422)
-            ctx["paper_count"] = result.get("papers", 0)
-            ctx["stages_json"] = result
+            ctx["paper_count"] = result.get("paper_count", 0)
+            ctx["stages_json"] = {"generated": result.get("paper_count", 0)}
     except TimeoutError as exc:
         return JSONResponse({"error": str(exc)}, status_code=504)
     except Exception as exc:
