@@ -1,14 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import {
   LayoutDashboard, FileText, BookOpen, Activity, Search,
-  ChevronRight, Brain, Bell,
+  ChevronRight, Brain, Bell, Loader2,
 } from 'lucide-react';
-import { DashboardHome } from './components/DashboardHome';
-import { ReportsPanel } from './components/ReportsPanel';
-import { PapersPanel } from './components/PapersPanel';
-import { PipelinePanel } from './components/PipelinePanel';
 import { searchPapers, fetchPipelineRuns, fetchPaperStats, type PipelineRun, type SearchResult } from './data/api';
 import { usePollingEffect, getAdaptiveInterval } from './hooks/usePolling';
+import { ErrorBoundary } from './components/ErrorBoundary';
+
+const DashboardHome = lazy(() => import('./components/DashboardHome'));
+const ReportsPanel = lazy(() => import('./components/ReportsPanel'));
+const PapersPanel = lazy(() => import('./components/PapersPanel'));
+const PipelinePanel = lazy(() => import('./components/PipelinePanel'));
 
 type Page = 'dashboard' | 'reports' | 'papers' | 'pipeline';
 
@@ -244,10 +246,18 @@ export default function App() {
 
         {/* Page content */}
         <div className="flex-1 overflow-y-auto">
-          {page === 'dashboard' && <DashboardHome />}
-          {page === 'reports' && <ReportsPanel />}
-          {page === 'papers' && <PapersPanel key={searchNav.nonce} onPapersLoaded={setTotalPapers} initialQuery={searchNav.query} />}
-          {page === 'pipeline' && <PipelinePanel />}
+          <ErrorBoundary>
+            <Suspense fallback={
+              <div className="flex items-center justify-center h-full">
+                <Loader2 className="animate-spin text-[#6366F1]" size={24} />
+              </div>
+            }>
+              {page === 'dashboard' && <DashboardHome />}
+              {page === 'reports' && <ReportsPanel />}
+              {page === 'papers' && <PapersPanel key={searchNav.nonce} onPapersLoaded={setTotalPapers} initialQuery={searchNav.query} />}
+              {page === 'pipeline' && <PipelinePanel />}
+            </Suspense>
+          </ErrorBoundary>
         </div>
       </main>
 

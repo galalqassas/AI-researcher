@@ -14,15 +14,15 @@ vi.mock('../../data/api', () => ({
 }))
 
 vi.mock('../../components/DashboardHome', () => ({
-  DashboardHome: () => <div data-testid="dashboard-home">DashboardHome</div>,
+  default: () => <div data-testid="dashboard-home">DashboardHome</div>,
 }))
 
 vi.mock('../../components/ReportsPanel', () => ({
-  ReportsPanel: () => <div data-testid="reports-panel">ReportsPanel</div>,
+  default: () => <div data-testid="reports-panel">ReportsPanel</div>,
 }))
 
 vi.mock('../../components/PapersPanel', () => ({
-  PapersPanel: (props: any) => (
+  default: (props: any) => (
     <div data-testid="papers-panel">
       PapersPanel {props.initialQuery ? `query=${props.initialQuery}` : ''}
     </div>
@@ -30,7 +30,7 @@ vi.mock('../../components/PapersPanel', () => ({
 }))
 
 vi.mock('../../components/PipelinePanel', () => ({
-  PipelinePanel: () => <div data-testid="pipeline-panel">PipelinePanel</div>,
+  default: () => <div data-testid="pipeline-panel">PipelinePanel</div>,
 }))
 
 import App from '../../App'

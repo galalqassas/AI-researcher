@@ -28,11 +28,11 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      '/papers': 'http://localhost:8000',
-      '/pipeline-runs': 'http://localhost:8000',
-      '/ingest': 'http://localhost:8000',
-      '/reports': 'http://localhost:8000',
-      '/search': 'http://localhost:8000',
+      '/papers': 'http://127.0.0.1:8000',
+      '/pipeline-runs': 'http://127.0.0.1:8000',
+      '/ingest': 'http://127.0.0.1:8000',
+      '/reports': 'http://127.0.0.1:8000',
+      '/search': 'http://127.0.0.1:8000',
     },
   },
   assetsInclude: ['**/*.svg', '**/*.csv'],

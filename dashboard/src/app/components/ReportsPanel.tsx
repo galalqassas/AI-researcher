@@ -655,3 +655,5 @@ export function ReportsPanel() {
     </div>
   );
 }
+
+export default ReportsPanel;

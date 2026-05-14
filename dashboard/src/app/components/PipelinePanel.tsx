@@ -199,3 +199,5 @@ export function PipelinePanel() {
     </div>
   );
 }
+
+export default PipelinePanel;
