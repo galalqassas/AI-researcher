@@ -34,7 +34,11 @@ def get_index(collection_name: str = PINECONE_INDEX_NAME):
     client = get_client()
     if client is None:
         return None
-    return client.Index(collection_name)
+    try:
+        return client.Index(collection_name)
+    except Exception as e:
+        log.warning(f"Failed to get Pinecone index '{collection_name}': {e}")
+        return None
 
 
 def ensure_collection(collection_name: str = PINECONE_INDEX_NAME):
@@ -42,18 +46,21 @@ def ensure_collection(collection_name: str = PINECONE_INDEX_NAME):
     client = get_client()
     if client is None:
         return
-    existing = [idx.name for idx in client.list_indexes()]
-    if collection_name not in existing:
-        client.create_index(
-            name=collection_name,
-            dimension=PINECONE_EMBED_DIMENSION,
-            metric="cosine",
-            spec=ServerlessSpec(
-                cloud="aws",
-                region="us-east-1"
+    try:
+        existing = [idx.name for idx in client.list_indexes()]
+        if collection_name not in existing:
+            client.create_index(
+                name=collection_name,
+                dimension=PINECONE_EMBED_DIMENSION,
+                metric="cosine",
+                spec=ServerlessSpec(
+                    cloud="aws",
+                    region="us-east-1"
+                )
             )
-        )
-        log.info(f"Created Pinecone index '{collection_name}' (dim={PINECONE_EMBED_DIMENSION}, cosine)")
+            log.info(f"Created Pinecone index '{collection_name}' (dim={PINECONE_EMBED_DIMENSION}, cosine)")
+    except Exception as e:
+        log.warning(f"Failed to ensure Pinecone index '{collection_name}': {e}")
 
 
 def upsert_papers_batch(
