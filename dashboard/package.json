@@ -1,11 +1,13 @@
 {
-  "name": "@figma/my-make-file",
+  "name": "auto-researcher-dashboard",
   "private": true,
   "version": "0.0.1",
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "dev": "vite"
+    "dev": "vite",
+    "test": "vitest run",
+    "test:ui": "vitest --ui"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
@@ -67,9 +69,15 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.1.12",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@vitejs/plugin-react": "4.7.0",
+    "@vitest/ui": "^4.1.6",
+    "jsdom": "^29.1.1",
     "tailwindcss": "4.1.12",
-    "vite": "6.3.5"
+    "vite": "6.3.5",
+    "vitest": "^4.1.6"
   },
   "peerDependencies": {
     "react": "18.3.1",
