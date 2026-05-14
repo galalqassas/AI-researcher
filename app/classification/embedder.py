@@ -42,8 +42,12 @@ def bytes_to_embed(data: bytes) -> np.ndarray:
     return np.array(struct.unpack(f"{n}f", data), dtype=np.float32)
 
 
-def embed_all_papers() -> int:
-    """Generate and store embeddings for all papers that don't have one yet.
+def embed_all_papers(paper_ids: list[int] | None = None) -> int:
+    """Generate and store embeddings for papers that don't have one yet.
+
+    Args:
+        paper_ids: If given, only embed these papers (incremental mode).
+                   If None, embed all papers missing embeddings (full scan).
 
     Embeddings are stored both:
       - in the SQLite database (LargeBinary column) for backward compatibility
@@ -52,7 +56,10 @@ def embed_all_papers() -> int:
     Returns the number of papers successfully embedded (not including Pinecone failures).
     """
     with get_session() as session:
-        papers = session.query(Paper).filter(Paper.embedding == None).all()
+        query = session.query(Paper).filter(Paper.embedding == None)
+        if paper_ids is not None:
+            query = query.filter(Paper.id.in_(paper_ids))
+        papers = query.all()
         log.info(f"Papers to embed: {len(papers)}")
 
         if not papers:

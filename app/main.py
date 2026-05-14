@@ -43,6 +43,7 @@ def create_app() -> FastAPI:
     origins = [
         "https://ai-research-mvp.vercel.app",
         "http://localhost:5173",
+        "https://dissuade-cadmium-wasting.ngrok-free.dev",
     ]
     app.add_middleware(
         CORSMiddleware,
@@ -72,6 +73,6 @@ def create_app() -> FastAPI:
 
 
 def _start_scheduler():
-    """Begin auto-ingesting 1 paper per minute with full pipeline, forever."""
+    """Start the background scheduler for auto-ingesting new papers."""
     from app.scheduler import start_scheduler
     start_scheduler()

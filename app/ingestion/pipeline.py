@@ -2,7 +2,6 @@ import json
 import logging
 from datetime import datetime, date, timezone
 from tqdm import tqdm
-from app.config import BUCKETS
 from app.database import get_session, init_db, engine
 from app.models.paper import Paper
 from app.ingestion.arxiv_client import fetch_papers
@@ -32,17 +31,20 @@ def get_last_published_date() -> date | None:
         return result
 
 
-def run_ingestion(query=None, max_results=None, bucket=None, sort_by_date=False, after_date=None):
+def run_ingestion(query=None, max_results=None, bucket=None, sort_by_date=False, after_date=None, before_date=None, silent=False):
     """Full ingestion pipeline: fetch from arXiv → extract full text → store in DB.
     If bucket is specified, only fetch that bucket.
     sort_by_date: Sort by newest first instead of relevance (for scheduler).
     after_date: If set, only fetch papers published on or after this date (server-side filter).
+    before_date: If set, only fetch papers published before this date (server-side filter).
+    silent: If True, suppress progress bars (for background scheduler).
     Returns (count, new_ids) — number of new papers and their DB IDs."""
     init_db()
 
     log.info("Starting ingestion pipeline...")
     papers = fetch_papers(max_results=max_results, query=query, bucket=bucket,
-                          sort_by_date=sort_by_date, after_date=after_date)
+                          sort_by_date=sort_by_date, after_date=after_date, before_date=before_date,
+                          silent=silent)
 
     if not papers:
         log.warning("No papers fetched from arXiv")
@@ -50,13 +52,15 @@ def run_ingestion(query=None, max_results=None, bucket=None, sort_by_date=False,
 
     with get_session() as session:
         added = 0
+        skipped = 0
         new_rows = []  # [(id, title, abstract)] for FTS index
         new_ids = []   # [id] for downstream dedup/classify
 
-        for p in tqdm(papers, desc="Storing papers"):
+        paper_iter = papers if silent else tqdm(papers, desc="Storing papers")
+        for p in paper_iter:
             existing = session.query(Paper).filter_by(arxiv_id=p["arxiv_id"]).first()
             if existing:
-                log.debug(f"Already in DB: {p['arxiv_id']}")
+                skipped += 1
                 continue
 
             full_text = extract_paper_text(p["arxiv_id"], p.get("pdf_url", ""))
@@ -96,5 +100,5 @@ def run_ingestion(query=None, max_results=None, bucket=None, sort_by_date=False,
             except Exception as e:
                 log.warning(f"FTS index update failed: {e}")
 
-    log.info(f"Ingestion complete: {added} new papers stored")
+    log.info(f"Ingestion complete: {added} new papers stored ({skipped} already in DB, {len(papers)} checked)")
     return added, new_ids

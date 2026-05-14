@@ -56,6 +56,11 @@ RERANK_WEIGHT_BM25 = float(os.getenv("RERANK_WEIGHT_BM25", "0.4"))
 DEDUP_THRESHOLD = float(os.getenv("DEDUP_THRESHOLD", "0.85"))
 APP_HOST = os.getenv("APP_HOST", "127.0.0.1")
 APP_PORT = int(os.getenv("APP_PORT", "8000"))
+
+# Scheduler
+SCHEDULER_INTERVAL_SECONDS = int(os.getenv("SCHEDULER_INTERVAL_SECONDS", "300"))
+SCHEDULER_LOOKBACK_DAYS = int(os.getenv("SCHEDULER_LOOKBACK_DAYS", "3"))
+SCHEDULER_MAX_RESULTS = int(os.getenv("SCHEDULER_MAX_RESULTS", "50"))
 REPORT_PERIODS = ["7d", "1m", "3m", "6m", "1y"]
 WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
 REPORT_TIMEOUT = int(os.getenv("REPORT_TIMEOUT", "3600"))

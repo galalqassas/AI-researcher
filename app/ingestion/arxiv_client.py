@@ -25,9 +25,10 @@ def matches_keywords(text: str, bucket: str) -> bool:
     return any(kw.lower() in text_lower for kw in ARXIV_KEYWORDS[bucket])
 
 
-def build_query(bucket: str, extra_query: str = None, after_date: date = None) -> str:
+def build_query(bucket: str, extra_query: str = None, after_date: date = None, before_date: date = None) -> str:
     """Build an arXiv API query string for a bucket using categories + keywords.
-    after_date: If set, only return papers submitted on or after this date."""
+    after_date: If set, only return papers submitted on or after this date.
+    before_date: If set, only return papers submitted before this date."""
     cats = ARXIV_CATEGORIES[bucket]
     cat_part = " OR ".join(f"cat:{c}" for c in cats)
     kws = ARXIV_KEYWORDS[bucket]
@@ -35,26 +36,39 @@ def build_query(bucket: str, extra_query: str = None, after_date: date = None) -
     parts = [f"({cat_part})", f"({kw_part})"]
     if extra_query:
         parts.append(f"({extra_query})")
-    if after_date is not None:
+    if after_date is not None and before_date is not None:
+        after_str = after_date.strftime("%Y%m%d") + "0000"
+        before_str = before_date.strftime("%Y%m%d") + "2359"
+        parts.append(f"submittedDate:[{after_str} TO {before_str}]")
+    elif after_date is not None:
         date_str = after_date.strftime("%Y%m%d") + "0000"
         parts.append(f"submittedDate:[{date_str} TO 209912310000]")
+    elif before_date is not None:
+        before_str = before_date.strftime("%Y%m%d") + "2359"
+        parts.append(f"submittedDate:[200001010000 TO {before_str}]")
     return " AND ".join(parts)
 
 
 def fetch_papers(bucket: str = None, max_results: int = None, query: str = None,
-                 sort_by_date: bool = False, after_date: date = None):
+                 sort_by_date: bool = False, after_date: date = None, before_date: date = None,
+                 silent: bool = False):
     """Fetch papers from arXiv. If bucket is given, use category+keyword filtering.
     If query is given, use it directly. Returns list of dicts with paper metadata.
     sort_by_date: Sort by SubmittedDate (newest first) instead of Relevance.
-    after_date: If set, only fetch papers submitted on or after this date (server-side filter)."""
+    after_date: If set, only fetch papers submitted on or after this date (server-side filter).
+    before_date: If set, only fetch papers submitted before this date (server-side filter)."""
     max_results = max_results or ARXIV_MAX_RESULTS
     buckets_to_search = [bucket] if bucket else BUCKETS
-    fetch_limit = max_results if after_date else max_results * 3
+    fetch_limit = max_results if (after_date or before_date) else max_results * 3
     all_papers = []
     seen_ids = set()
 
-    for b in tqdm(buckets_to_search, desc="Buckets"):
-        search_query = build_query(b, extra_query=query, after_date=after_date)
+    bucket_iter = buckets_to_search if silent else tqdm(buckets_to_search, desc="Buckets")
+    for b in bucket_iter:
+        search_query = build_query(b, extra_query=query, after_date=after_date, before_date=before_date)
+
+        # Client-side before_date filter
+        before_dt = datetime(before_date.year, before_date.month, before_date.day) if before_date else None
         log.info(f"Searching arXiv for bucket '{b}': {search_query}")
 
         sort_criterion = arxiv.SortCriterion.SubmittedDate if sort_by_date else arxiv.SortCriterion.Relevance
@@ -66,12 +80,18 @@ def fetch_papers(bucket: str = None, max_results: int = None, query: str = None,
 
         bucket_count = 0
         try:
-            for result in tqdm(client.results(search), desc=f"  Papers ({b})", leave=False):
+            results_iter = client.results(search)
+            if not silent:
+                results_iter = tqdm(results_iter, desc=f"  Papers ({b})", leave=False)
+            for result in results_iter:
                 arxiv_id = result.entry_id.split("/abs/")[-1]
                 if arxiv_id in seen_ids:
                     continue
 
-                if result.published and result.published.replace(tzinfo=None) < ARXIV_FROM_DATETIME:
+                pub_dt = result.published.replace(tzinfo=None) if result.published else None
+                if pub_dt and pub_dt < ARXIV_FROM_DATETIME:
+                    continue
+                if pub_dt and before_dt and pub_dt >= before_dt:
                     continue
 
                 title = result.title.replace("\n", " ").strip()

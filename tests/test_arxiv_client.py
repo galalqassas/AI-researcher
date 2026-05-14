@@ -248,3 +248,18 @@ class TestFetchPapers:
             papers = fetch_papers(bucket="general_ai", max_results=1)
 
         assert len(papers[0]["buckets"]) == len(ARXIV_KEYWORDS)
+
+    def test_silent_suppresses_tqdm(self):
+        """silent=True should still return results without tqdm wrappers."""
+        mock_result = self._make_result(
+            "2401.00001", "Test Paper", "Abstract",
+            datetime(2024, 1, 15, tzinfo=timezone.utc),
+        )
+        mock_client = MagicMock()
+        mock_client.results.return_value = [mock_result]
+
+        with patch("app.ingestion.arxiv_client.client", mock_client):
+            papers = fetch_papers(bucket="general_ai", max_results=1, silent=True)
+
+        assert len(papers) == 1
+        assert papers[0]["arxiv_id"] == "2401.00001"

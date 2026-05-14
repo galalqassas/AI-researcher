@@ -124,7 +124,7 @@ All commands run via `python run.py`:
 | `python run.py pipeline --bucket general_ai --query "cat:cs.AI"` | Run pipeline targeting a specific bucket and/or query |
 | `python run.py backfill --days 30` | One-time bulk backfill: fetch papers from last N days across all buckets, then dedup/embed/classify once |
 | `python run.py resync` | Re-sync embeddings from SQLite to Pinecone (recover from dual-write drift) |
-| `python run.py serve [--host] [--port]` | Start dashboard server with auto-ingest scheduler (tries all buckets per cycle, 60s interval) |
+| `python run.py serve [--host] [--port]` | Start dashboard server with auto-ingest scheduler (all buckets per cycle, 5min interval, 3-day lookback, 50 papers/bucket) |
 
 ## Dashboard Frontend
 
@@ -176,6 +176,9 @@ The React SPA is served by FastAPI in production via a catch-all `/{full_path:pa
 | `APP_PORT` | `8000` | Dashboard port |
 | `WEBHOOK_URL` | *(empty)* | Webhook URL for pipeline alerts (Slack-compatible). Empty = disabled |
 | `REPORT_TIMEOUT` | `3600` | Max seconds for report generation before auto-failing (0 = unlimited) |
+| `SCHEDULER_INTERVAL_SECONDS` | `300` | Seconds between scheduler cycles (default 5 min) |
+| `SCHEDULER_LOOKBACK_DAYS` | `3` | Lookback window in days for scheduler arXiv queries (handles publication lag) |
+| `SCHEDULER_MAX_RESULTS` | `50` | Max papers per bucket per scheduler cycle |
 
 ## Database Models
 
@@ -231,15 +234,15 @@ All endpoints are covered by `test_routes.py`.
 - `_cached_invoke()` has **3 retries with 2s backoff** on LLM failure. On final failure it logs and re-raises.
 - Token counting is naive whitespace-split word count (`len(text.split())`) — not model-specific tokenization.
 - Bucket description embeddings cached to `data/bucket_embeddings.json`. Cache is **auto-invalidated** via a SHA-256 fingerprint of `BUCKET_DESCRIPTIONS` — if the descriptions change, the cache is recomputed on next `classify` run. No manual file deletion needed.
-- `embed_all_papers()` returns the count of successfully embedded papers (not the total queried). If Pinecone upsert fails, a warning is logged but the SQLite count is still accurate.
+- `embed_all_papers(paper_ids=None)` — if `paper_ids` is given, only embeds those specific papers (incremental, used by scheduler). Otherwise embeds all papers missing embeddings (full scan, used by CLI `classify` command).
 - `run_ingestion()` returns `(count, new_ids)` — the number of new papers and their DB IDs. Downstream steps (`deduplicate`, `classify_all_papers`) accept optional ID lists to operate incrementally on just the new papers.
-- `run_ingestion(after_date=date)` filters arXiv results server-side using `submittedDate:[YYYYMMDD0000 TO 209912310000]` to only fetch papers published on or after the given date. This eliminates re-fetching papers already in the DB.
+- `run_ingestion(after_date=date)` filters arXiv results server-side using `submittedDate:[YYYYMMDD0000 TO 209912310000]` to only fetch papers published on or after the given date. This eliminates re-fetching papers already in the DB. Accepts `silent=True` to suppress tqdm progress bars (used by the scheduler).
 - `get_last_published_date()` queries the DB for `max(Paper.published_date)`, used by the scheduler to determine the `after_date` filter.
 - `classify_all_papers(paper_ids=None)` — if `paper_ids` is given, only classifies those papers. Otherwise classifies all embedded papers (full scan, used by CLI `classify` command).
 - `deduplicate(new_paper_ids=None)` — if `new_paper_ids` is given, only compares those papers against existing ones (incremental, used by scheduler and pipeline). Otherwise compares all pairs (full scan, used by CLI `dedup` command).
-- `python run.py serve` starts the dashboard server with an auto-ingest background scheduler. Each cycle (every 60s): queries the DB for the latest `published_date`, uses it as an `after_date` filter for arXiv, tries all 3 buckets sequentially until one yields new papers, then runs incremental dedup/embed/classify on only the new papers.
+- `python run.py serve` starts the dashboard server with a background scheduler. Each cycle (every `SCHEDULER_INTERVAL_SECONDS`, default 300s/5min): computes `after_date = today - SCHEDULER_LOOKBACK_DAYS` (default 3 days), fetches all 3 buckets sequentially with `sort_by_date=True`, `silent=True`, and `max_results=SCHEDULER_MAX_RESULTS` (default 50), collects all `new_ids` across buckets, then runs incremental embed/classify (no fuzzy dedup). A `threading.Lock` prevents overlapping cycles. Logs per-bucket counts and total embedded/classified.
 - `build_query(bucket, extra_query=None, after_date=None)` — builds arXiv API query strings. When `after_date` is given, appends a `submittedDate` range filter to only return papers from that date onward.
-- `fetch_papers(..., after_date=None)` — passes `after_date` to `build_query()`. When set, reduces fetch over-fetch from `3×` to `1×` since the date filter already eliminates old papers.
+- `fetch_papers(..., after_date=None, silent=False)` — passes `after_date` to `build_query()`. When `after_date` is set, reduces fetch over-fetch from `3×` to `1×`. `silent=True` suppresses tqdm progress bars (for background scheduler).
 - FTS5 virtual table `papers_fts` used for BM25 keyword search during hybrid classification and the `/search` endpoint. Populated during ingestion, cleaned during dedup, rebuildable via `rebuild_fts()`.
 - Pipeline metrics tracked in `pipeline_runs` table via `track_pipeline()` context manager. Webhook alerts sent after each run if `WEBHOOK_URL` is configured.
 - On app startup, `_mark_stale_runs_failed()` in `app/main.py` marks any `PipelineRun` rows with `status="running"` as `"error"` — this handles cases where the server restarts mid-pipeline.
@@ -387,7 +390,7 @@ alembic revision --autogenerate -m "description of change"
 
 The arXiv API returns **HTTP 500** when combining `submittedDate` range filters with `sortBy=SubmittedDate` on multi-category queries. To work around this:
 - Default `sortBy=Relevance` (no date sorting); the scheduler uses `sortBy=SubmittedDate` (newest first) since it queries one bucket at a time
-- The scheduler uses server-side date filtering (`submittedDate:[YYYYMMDD0000 TO 209912310000]`) to only fetch papers newer than the latest one in the DB. This works reliably for single-bucket queries
+- The scheduler uses a 3-day lookback window (`after_date = today - 3 days`) to handle arXiv's 1-2 day publication lag, rather than querying from the last known published date (which caused zero-result days)
 - When `after_date` is set in `fetch_papers()`, the over-fetch factor is reduced from `3×` to `1×` since the date filter eliminates old papers server-side
 - Client-side date filtering (`ARXIV_FROM_DATE`) is still applied as a safety net for papers published before the configured minimum date
 - `fetch_papers(sort_by_date=True)` sorts by `SubmittedDate` for the scheduler to discover new papers; `sort_by_date=False` (default) sorts by `Relevance` for ad-hoc queries

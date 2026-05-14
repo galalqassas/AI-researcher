@@ -92,6 +92,17 @@ class TestRunIngestion:
             mock_gs.return_value.__exit__ = MagicMock(return_value=False)
             assert run_ingestion() == (0, [])
 
+    def test_silent_passes_through(self, pipeline_engine, pipeline_session):
+        """silent=True should be passed to fetch_papers."""
+        with patch("app.ingestion.pipeline.fetch_papers", return_value=[]) as mock_fetch, \
+             patch("app.ingestion.pipeline.init_db"), \
+             patch("app.ingestion.pipeline.get_session") as mock_gs:
+            mock_gs.return_value.__enter__ = MagicMock(return_value=pipeline_session)
+            mock_gs.return_value.__exit__ = MagicMock(return_value=False)
+            run_ingestion(silent=True)
+        _, kwargs = mock_fetch.call_args
+        assert kwargs.get("silent") is True
+
 
 class TestGetLastPublishedDate:
 

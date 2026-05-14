@@ -83,3 +83,21 @@ class TestEmbedAllPapers:
             mock_gs.return_value.__exit__ = MagicMock(return_value=False)
             assert embed_all_papers() == 0
         mock_eg.assert_not_called()
+
+    def test_paper_ids_filters_to_specific_papers(self, db_engine, db_session):
+        """When paper_ids is given, only embed those papers (incremental mode)."""
+        p1 = Paper(arxiv_id="2401.00001", title="T1", abstract="A1", full_text="F",
+                    ingested_at=datetime.now(timezone.utc), embedding=None)
+        p2 = Paper(arxiv_id="2401.00002", title="T2", abstract="A2", full_text="F",
+                    ingested_at=datetime.now(timezone.utc), embedding=None)
+        db_session.add_all([p1, p2])
+        db_session.commit()
+
+        mock_emb = np.array([0.1] * 768, dtype=np.float32)
+        with patch("app.classification.embedder.get_session") as mock_gs, \
+             patch("app.classification.embedder.get_embedding", return_value=mock_emb), \
+             patch("app.classification.embedder.upsert_papers_batch"):
+            mock_gs.return_value.__enter__ = MagicMock(return_value=db_session)
+            mock_gs.return_value.__exit__ = MagicMock(return_value=False)
+            # Only embed paper p1 (skip p2 which is also unembedded)
+            assert embed_all_papers(paper_ids=[p1.id]) == 1
