@@ -3,7 +3,6 @@ import concurrent.futures
 from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 from datetime import datetime, timezone
-from sqlalchemy import func
 from app.database import Session
 from app.models.paper import Paper, Report, PipelineRun
 from app.config import BUCKETS, REPORT_TIMEOUT
@@ -56,34 +55,31 @@ async def paper_stats():
     """Paper counts: total, per bucket, and per date for charts."""
     db = Session()
     total = db.query(Paper).count()
-    # Papers published today
-    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    today = db.query(Paper).filter(
-        func.strftime("%Y-%m-%d", Paper.published_date) == today_str
-    ).count()
-
-    per_bucket = {}
-    for bucket_key in BUCKETS:
-        per_bucket[bucket_key] = db.query(Paper).filter(
-            Paper.buckets.contains(f'"{bucket_key}"')
-        ).count()
-    # Per-day aggregation for charts
-    per_date_rows = db.query(
-        func.strftime("%Y-%m-%d", Paper.published_date).label("date"),
-        func.count(Paper.id).label("count"),
-    ).filter(Paper.published_date.isnot(None)).group_by("date").order_by("date").all()
-    # Also get per-day per-bucket counts
-    per_date = []
-    for date, count in per_date_rows:
-        bucket_counts = {}
-        for bk in BUCKETS:
-            bucket_counts[bk] = db.query(Paper).filter(
-                Paper.published_date.isnot(None),
-                func.strftime("%Y-%m-%d", Paper.published_date) == date,
-                Paper.buckets.contains(f'"{bk}"'),
-            ).count()
-        per_date.append({"date": date, "count": count, **bucket_counts})
+    rows = db.query(Paper.published_date, Paper.buckets).filter(
+        Paper.published_date.isnot(None)
+    ).all()
     db.close()
+
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    per_bucket = {bk: 0 for bk in BUCKETS}
+    date_agg = {}
+    today = 0
+
+    for pub_date, buckets_str in rows:
+        d = pub_date.strftime("%Y-%m")
+        entry = date_agg.setdefault(d, {"date": d, "count": 0, **{bk: 0 for bk in BUCKETS}})
+        entry["count"] += 1
+        if pub_date.strftime("%Y-%m-%d") == today_str:
+            today += 1
+        buckets = json.loads(buckets_str) if buckets_str else []
+        for bk in buckets:
+            if bk in per_bucket:
+                per_bucket[bk] += 1
+            if bk in entry:
+                entry[bk] += 1
+
+    per_date = sorted(date_agg.values(), key=lambda x: x["date"])
+
     return JSONResponse({
         "total": total,
         "today": today,

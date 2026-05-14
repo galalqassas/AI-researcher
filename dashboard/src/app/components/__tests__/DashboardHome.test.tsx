@@ -27,7 +27,7 @@ describe('DashboardHome', () => {
     vi.mocked(fetchPaperStats).mockResolvedValue({
       total: 10, today: 2,
       per_bucket: { general_ai: 5, autonomous_agents: 3, ai_finance: 2 },
-      per_date: [{ date: '2025-05-12', count: 2, general_ai: 1, autonomous_agents: 1, ai_finance: 0 }],
+      per_date: [{ date: '2025-05', count: 2, general_ai: 1, autonomous_agents: 1, ai_finance: 0 }],
     })
     vi.mocked(fetchPipelineRuns).mockResolvedValue([{
       id: 1, name: 'full_pipeline', started_at: '2025-05-12T18:30:00',

@@ -49,7 +49,7 @@ describe('App', () => {
     vi.mocked(fetchPaperStats).mockResolvedValue({
       total: 42, today: 2,
       per_bucket: { general_ai: 20, autonomous_agents: 12, ai_finance: 10 },
-      per_date: [{ date: '2025-05-12', count: 2, general_ai: 1, autonomous_agents: 1, ai_finance: 0 }],
+      per_date: [{ date: '2025-05', count: 2, general_ai: 1, autonomous_agents: 1, ai_finance: 0 }],
     } as any)
     vi.mocked(searchPapers).mockResolvedValue({ query: '', results: [] } as any)
   })

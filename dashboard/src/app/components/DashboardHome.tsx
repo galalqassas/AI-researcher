@@ -154,10 +154,10 @@ export function DashboardHome() {
   const lastRun = runs[0];
   const successRate = runs.length ? Math.round((runs.filter(r => r.status === 'success').length / runs.length) * 100) : 0;
 
-  // Build chart data from stats — daily granularity
+  // Build chart data from stats — monthly granularity
   const chartData = stats.per_date.map(d => {
-    const dt = new Date(d.date + 'T00:00:00');
-    const label = dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const dt = new Date(d.date.length === 7 ? `${d.date}-01T00:00:00` : `${d.date}T00:00:00`);
+    const label = dt.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
     return {
       date: label,
       general_ai: d.general_ai || 0,
@@ -247,7 +247,7 @@ export function DashboardHome() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-[#0F172A]" style={{ fontWeight: 600 }}>Papers Published Over Time</h3>
-              <p className="text-[#94A3B8] text-xs mt-1">Daily breakdown by research bucket</p>
+              <p className="text-[#94A3B8] text-xs mt-1">Monthly breakdown by research bucket</p>
             </div>
             <div className="flex items-center gap-3">
               {Object.entries(BUCKET_CONFIG).map(([key, cfg]) => (

@@ -98,7 +98,7 @@ export function makeStats(overrides: Partial<PaperStats> = {}): PaperStats {
     today: 2,
     per_bucket: { general_ai: 5, autonomous_agents: 3, ai_finance: 2 },
     per_date: [
-      { date: '2025-05-12', count: 2, general_ai: 1, autonomous_agents: 1, ai_finance: 0 },
+      { date: '2025-05', count: 2, general_ai: 1, autonomous_agents: 1, ai_finance: 0 },
     ],
     ...overrides,
   }

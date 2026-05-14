@@ -17,9 +17,11 @@ All five pipeline stages have been tested end-to-end with real data:
 | **Report** | ✅ Working | Per-paper summaries (light model), per-bucket summaries + cross-domain synthesis (heavy model), LLM response cache, token cap |
 | **API** | ✅ Working | All endpoints returning JSON |
 | **Embeddings** | ✅ Synced | 947/947 papers embedded — SQLite and Pinecone in sync |
-| **Tests** | ✅ 126 passing | Full pytest suite: `test_routes.py` (13), `test_arxiv_client.py` (17+), `test_main.py` (4), `test_pinecone_store.py` (13), plus existing unit tests |
+| **Tests** | ✅ 137 + 50 passing | Full pytest suite + frontend Vitest suite |
 
 ## Tech Stack
+
+- **Frontend build tool:** Vite 6.3.5 + pnpm workspace
 
 - **Language:** Python 3.10+
 - **Web Framework:** FastAPI + Uvicorn
@@ -83,6 +85,7 @@ auto-researcher/
 │   │   ├── __init__.py
 │   │   ├── generator.py    # LangChain + Ollama report generation (lazy LLM init + cache + cap + partial save)
 │   │   └── prompts.py      # LLM prompt templates
+│   ├── backfill.py           # One-time bulk backfill across all buckets (ingest → dedup → embed → classify)
 │   └── dashboard/
 │       ├── __init__.py
 │       └── routes.py       # FastAPI JSON API endpoints (papers, stats, ingest, reports, search, pipeline-runs)
@@ -119,6 +122,7 @@ All commands run via `python run.py`:
 | `python run.py report --period 7d` | Generate report (periods: 7d, 1m, 3m, 6m, 1y) |
 | `python run.py pipeline --period 7d` | Run full pipeline: ingest → dedup → embed → classify → report with metrics tracking |
 | `python run.py pipeline --bucket general_ai --query "cat:cs.AI"` | Run pipeline targeting a specific bucket and/or query |
+| `python run.py backfill --days 30` | One-time bulk backfill: fetch papers from last N days across all buckets, then dedup/embed/classify once |
 | `python run.py resync` | Re-sync embeddings from SQLite to Pinecone (recover from dual-write drift) |
 | `python run.py serve [--host] [--port]` | Start dashboard server with auto-ingest scheduler (tries all buckets per cycle, 60s interval) |
 
@@ -128,7 +132,7 @@ The React SPA is served by FastAPI in production via a catch-all `/{full_path:pa
 
 | Panel | Features |
 |---|---|
-| **Dashboard Home** | Stat cards (total papers, per-bucket counts), daily area chart (papers ingested over time), donut chart (bucket distribution), recent papers list, latest pipeline runs |
+| **Dashboard Home** | Stat cards (total papers, per-bucket counts), monthly area chart (papers ingested over time), donut chart (bucket distribution), recent papers list, latest pipeline runs |
 | **Papers** | Bucket filter chips, server-side text search (ILIKE on title/abstract/arxiv_id/authors), expandable abstracts, clickable title links to arXiv, live paper count |
 | **Reports** | Period selector (5 periods), report history list, rich report viewer modal with HTML export + print styles, markdown rendering via `marked` |
 | **Pipeline** | Run history with expandable stage breakdowns, duration bar chart, "Run Pipeline" trigger button |
@@ -144,6 +148,7 @@ The React SPA is served by FastAPI in production via a catch-all `/{full_path:pa
 2. **Dedup** — Fuzzy title matching via `rapidfuzz.fuzz.ratio()`. Accepts optional `new_paper_ids` for **incremental mode** — only compares new papers against existing ones (O(n×m)) instead of all-vs-all (O(n²)). Full scan still available via CLI `dedup` command. Also deletes orphan vectors from Pinecone and stale FTS rows.
 3. **Classify** — Generates embeddings via `nomic-embed-text-v2-moe`, dual-writes to both SQLite and Pinecone. Accepts optional `paper_ids` for **incremental mode** — only classifies specified papers instead of all embedded papers. Uses **hybrid RRF classification**: dense cosine similarity against bucket embeddings + BM25 keyword search via FTS5, merged via Reciprocal Rank Fusion (`1/(k+dense_rank) + 1/(k+bm25_rank)`, default `k=60`). BM25 rankings are pre-computed per bucket. **Borderline reranking**: papers within `RERANK_MARGIN` (0.05) below the similarity threshold get re-scored using a weighted blend of cosine (0.6) and RRF (0.4). A borderline bucket is promoted only if the blended score is `>= SIMILARITY_THRESHOLD * 0.8` (i.e., 80% of the main threshold). Falls back to pure cosine if no BM25 results.
 4. **Report** — Groups papers by bucket. Per-paper summaries use `llm_light` (lazy-initialized, configurable, defaults to `OLLAMA_MODEL`), per-bucket summaries + cross-domain synthesis use `llm_heavy` (`OLLAMA_MODEL`). LLM responses are cached to `data/llm_cache.json` keyed on SHA-256 hash of `model:prompt`. Token usage is tracked per run and capped by `OLLAMA_MAX_TOKENS_PER_RUN` (0 = unlimited). Partial results are saved on LLM failure — completed bucket summaries are preserved even if later buckets fail. **Note:** per-paper summaries are stored as a temporary `paper._summary` attribute in-memory; they are **not persisted** to the database.
+5. **Backfill** — One-time bulk operation (`python run.py backfill --days 30`). Computes `after_date` as `today - days`, then adjusts forward to `last_published_date + 1` if the DB already has newer papers. Iterates all 3 buckets with `sort_by_date=True` and the computed `after_date`, collecting all `new_ids`. Runs incremental dedup/embed/classify once on the combined new IDs — more efficient than per-bucket incremental. Returns a summary dict with per-bucket counts and stage totals.
 
 ## Configuration (.env)
 
@@ -241,6 +246,7 @@ All endpoints are covered by `test_routes.py`.
 - Report generation (`POST /reports/generate`) enforces a `REPORT_TIMEOUT` (default 3600s / 1 hour). If report generation exceeds this, the pipeline run is marked as failed and a 504 response is returned. Configured via the `REPORT_TIMEOUT` env var.
 - Database migrations managed by Alembic. Run `alembic upgrade head` to apply migrations. Initial schema captured in `migrations/versions/001_initial_schema.py`.
 - Report generation uses `Session()` factory (not `get_session()`) for safe session handling. Partial results (bucket summaries, cross-domain synthesis) are preserved on LLM failure.
+- `run_backfill(days=30, max_results_per_bucket=100)` — one-time bulk operation. Iterates all 3 buckets with `sort_by_date=True` and `after_date=max(today - days, last_published_date + 1)`. Collects all `new_ids` across buckets, then runs incremental dedup/embed/classify once on the combined IDs. More efficient than per-bucket incremental. Returns a summary dict with `ingested`, `per_bucket`, `deduplicated`, `embedded`, `classified`.
 
 ## Known Issues
 
@@ -254,9 +260,36 @@ All endpoints are covered by `test_routes.py`.
 
 ## Testing
 
+### Backend Tests
+
 Tests live in `tests/`. Run with `python -m pytest tests/ -v`. The test suite uses `pytest` with in-memory SQLite and `unittest.mock` for all external services (Ollama, Pinecone, arXiv, HTTP).
 
-### Test Structure
+### Frontend Tests
+
+Tests live in `dashboard/src/app/components/__tests__/`. Run with:
+
+```bash
+cd dashboard
+pnpm test          # run all tests once
+pnpm test:ui       # interactive HTML reporter
+```
+
+The frontend test suite uses **Vitest** + **React Testing Library** + **JSDOM**.
+
+| File | Scope |
+|---|---|
+| `api.test.ts` | `apiFetch` error paths, query-string assembly, all endpoint wrappers |
+| `usePolling.test.ts` | Tick scheduling, pause on `document.hidden`, adaptive interval logic |
+| `App.test.tsx` | Sidebar nav switches pages, search modal opens/closes |
+| `DashboardHome.test.tsx` | Stat cards, charts (mocked), pipeline runs list, report count |
+| `PapersPanel.test.tsx` | Bucket chips, pagination, arXiv links, `initialQuery`, `onPapersLoaded` |
+| `ReportsPanel.test.tsx` | Period cards, history list, modal open, HTML export |
+| `PipelinePanel.test.tsx` | Stat cards, bar chart (mocked), "Run Pipeline" button, expandable runs |
+| `ImageWithFallback.test.tsx` | `src` render, `onError` fallback swap |
+
+**Mock strategy:** `recharts` and `marked` are mocked globally in `dashboard/src/test/setup.ts` to avoid SVG/canvas issues in JSDOM. `lucide-react` icons render as real SVGs. API modules are mocked per-test with `vi.mock()`.
+
+### Test Structure (Backend)
 
 ```
 tests/
@@ -264,6 +297,7 @@ tests/
 ├── test_arxiv_client.py       # matches_keywords, build_query, fetch_papers
 ├── test_pdf_extractor.py       # download_pdf, extract_text
 ├── test_pipeline.py            # parse_published_date, run_ingestion
+├── test_backfill.py            # run_backfill: bucket iteration, after_date logic, incremental dedup/classify
 ├── test_embedder.py            # embed_to_bytes, bytes_to_embed, get_embedding, embed_all_papers
 ├── test_classifier.py          # cosine_similarity, _sanitize_fts_query, classify_all_papers, compute_bucket_embeddings
 ├── test_dedup.py               # find_duplicates, deduplicate
@@ -274,6 +308,20 @@ tests/
 ├── test_database.py            # init_db, get_session, rebuild_fts
 ├── test_main.py               # _mark_stale_runs_failed, create_app startup logic
 └── test_routes.py              # FastAPI TestClient endpoints (all routes covered)
+```
+
+### Test Structure (Frontend)
+
+```
+dashboard/src/app/components/__tests__/
+├── api.test.ts               # API client wrappers + error handling
+├── usePolling.test.ts        # Polling hook + adaptive interval logic
+├── App.test.tsx              # Shell navigation + search modal
+├── DashboardHome.test.tsx    # Stat cards, charts, pipeline runs
+├── PapersPanel.test.tsx      # Filter chips, pagination, links
+├── ReportsPanel.test.tsx     # Period selector, modal, export
+├── PipelinePanel.test.tsx    # Stats, chart, run trigger, expandable runs
+└── ImageWithFallback.test.tsx # Image fallback on error
 ```
 
 ### Key Testing Patterns
@@ -290,10 +338,9 @@ tests/
 
 | Workflow | File | Triggers | What it does |
 |---|---|---|---|
-| **Tests** | `.github/workflows/tests.yml` | Push to any branch, PR to `main` | Installs Python deps and runs `pytest tests/ -q` on Ubuntu with Python 3.11 |
+| **Tests** | `.github/workflows/tests.yml` | Push to any branch, PR to `main` | Runs Python `pytest tests/ -q` + frontend `pnpm test` + `pnpm build` |
 
 **Current gaps:**
-- No frontend build / TypeScript check in CI (only local `vite build`)
 - No linting or formatting gates
 - No Docker or automated deployment step — production deploy is manual (`python run.py serve`)
 
