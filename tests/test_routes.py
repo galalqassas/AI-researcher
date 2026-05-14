@@ -178,7 +178,7 @@ class TestAPIRoutes:
         s = sf()
         s.execute(text(
             "INSERT INTO papers (arxiv_id, title, authors, abstract, full_text, pdf_url, published_date, ingested_at, buckets) "
-            "VALUES ('2401.00001', 'Test Paper', 'A', 'Abstract', 'Full', 'https://x', '2024-01-01', datetime('now'), '[\"general_ai\"]')"
+            "VALUES ('2401.00001', 'Test Paper', 'A', 'Abstract', 'Full', 'https://x', date('now'), datetime('now'), '[\"general_ai\"]')"
         ))
         s.commit()
         s.close()

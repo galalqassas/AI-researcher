@@ -196,7 +196,7 @@ export function DashboardHome() {
         <StatCard label="Total Papers" value={totalPapers} sub="across 3 research buckets"
           gradientFrom="#818CF8" gradientTo="#6366F1" shadowColor="#6366F1"
           icon={<Database size={20} color="white" />} />
-        <StatCard label="Papers Today" value={papersToday} sub="ingested today"
+        <StatCard label="Papers Today" value={papersToday} sub="published today"
           gradientFrom="#34D399" gradientTo="#059669" shadowColor="#10B981"
           icon={<Zap size={20} color="white" />} />
         <StatCard label="Reports" value={reportCount} sub="generated"
@@ -246,7 +246,7 @@ export function DashboardHome() {
         <div className="xl:col-span-2 bg-white rounded-2xl border border-[#E2E8F0] p-5">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h3 className="text-[#0F172A]" style={{ fontWeight: 600 }}>Papers Ingested Over Time</h3>
+              <h3 className="text-[#0F172A]" style={{ fontWeight: 600 }}>Papers Published Over Time</h3>
               <p className="text-[#94A3B8] text-xs mt-1">Daily breakdown by research bucket</p>
             </div>
             <div className="flex items-center gap-3">
@@ -276,7 +276,7 @@ export function DashboardHome() {
               </AreaChart>
             </ResponsiveContainer>
           ) : (
-            <div className="flex items-center justify-center h-[220px] text-[#94A3B8] text-sm">No ingestion data yet</div>
+            <div className="flex items-center justify-center h-[220px] text-[#94A3B8] text-sm">No publication data yet</div>
           )}
         </div>
 
@@ -404,3 +404,5 @@ function RecentPapersCard() {
     </div>
   );
 }
+
+export default DashboardHome;

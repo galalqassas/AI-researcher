@@ -9,7 +9,7 @@ from sqlalchemy import text
 from app.config import SIMILARITY_THRESHOLD, RRF_K, RERANK_MARGIN, RERANK_WEIGHT_COSINE, RERANK_WEIGHT_BM25
 from app.classification.embedder import get_embedding, bytes_to_embed
 from app.classification.pinecone_store import get_collection_info
-from app.database import get_session, engine, Session
+from app.database import engine, Session
 from app.models.paper import Paper
 
 log = logging.getLogger(__name__)

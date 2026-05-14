@@ -115,8 +115,8 @@ def _cached_invoke(llm_instance, prompt_text: str, max_retries: int = 3) -> str:
 def get_papers_for_period(period: str, session):
     """Query papers published within the given period."""
     days = PERIOD_DAYS.get(period, 30)
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-    return session.query(Paper).filter(Paper.ingested_at >= cutoff).all()
+    cutoff = datetime.now(timezone.utc).date() - timedelta(days=days)
+    return session.query(Paper).filter(Paper.published_date >= cutoff).all()
 
 
 def summarize_paper(paper) -> str:

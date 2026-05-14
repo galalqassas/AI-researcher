@@ -152,7 +152,7 @@ export function PapersPanel({ onPapersLoaded, initialQuery }: { onPapersLoaded?:
     <div className="p-6 space-y-6">
       <div>
         <h1 className="text-[#0F172A]" style={{ fontWeight: 700 }}>Papers</h1>
-        <p className="text-[#64748B] text-sm mt-0.5">Browse all ingested arXiv papers · filter by bucket</p>
+        <p className="text-[#64748B] text-sm mt-0.5">Browse all arXiv papers · filter by bucket</p>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
@@ -251,3 +251,5 @@ export function PapersPanel({ onPapersLoaded, initialQuery }: { onPapersLoaded?:
     </div>
   );
 }
+
+export default PapersPanel;

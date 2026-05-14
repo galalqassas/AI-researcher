@@ -7,7 +7,6 @@ External services (Ollama, Pinecone, arXiv, HTTP) are mocked per-test.
 import json
 import struct
 from datetime import date, datetime, timezone
-from unittest.mock import MagicMock
 
 import numpy as np
 import pytest

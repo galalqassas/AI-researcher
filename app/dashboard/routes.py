@@ -32,7 +32,7 @@ async def list_papers(
             (Paper.authors.ilike(pattern))
         )
     total = query.count()
-    papers = query.order_by(Paper.ingested_at.desc()).offset((page - 1) * limit).limit(limit).all()
+    papers = query.order_by(Paper.published_date.desc()).offset((page - 1) * limit).limit(limit).all()
     db.close()
     return JSONResponse({
         "total": total,
@@ -56,10 +56,10 @@ async def paper_stats():
     """Paper counts: total, per bucket, and per date for charts."""
     db = Session()
     total = db.query(Paper).count()
-    # Papers ingested today
+    # Papers published today
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     today = db.query(Paper).filter(
-        func.strftime("%Y-%m-%d", Paper.ingested_at) == today_str
+        func.strftime("%Y-%m-%d", Paper.published_date) == today_str
     ).count()
 
     per_bucket = {}
@@ -69,17 +69,17 @@ async def paper_stats():
         ).count()
     # Per-day aggregation for charts
     per_date_rows = db.query(
-        func.strftime("%Y-%m-%d", Paper.ingested_at).label("date"),
+        func.strftime("%Y-%m-%d", Paper.published_date).label("date"),
         func.count(Paper.id).label("count"),
-    ).filter(Paper.ingested_at.isnot(None)).group_by("date").order_by("date").all()
+    ).filter(Paper.published_date.isnot(None)).group_by("date").order_by("date").all()
     # Also get per-day per-bucket counts
     per_date = []
     for date, count in per_date_rows:
         bucket_counts = {}
         for bk in BUCKETS:
             bucket_counts[bk] = db.query(Paper).filter(
-                Paper.ingested_at.isnot(None),
-                func.strftime("%Y-%m-%d", Paper.ingested_at) == date,
+                Paper.published_date.isnot(None),
+                func.strftime("%Y-%m-%d", Paper.published_date) == date,
                 Paper.buckets.contains(f'"{bk}"'),
             ).count()
         per_date.append({"date": date, "count": count, **bucket_counts})
