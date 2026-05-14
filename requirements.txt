@@ -25,3 +25,4 @@ click==8.2.1
 tqdm==4.67.1
 
 pinecone
+pytest
