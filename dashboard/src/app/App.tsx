@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import {
   LayoutDashboard, FileText, BookOpen, Activity, Search,
-  ChevronRight, Brain, Settings, Bell,
+  ChevronRight, Brain, Bell,
 } from 'lucide-react';
 import { DashboardHome } from './components/DashboardHome';
 import { ReportsPanel } from './components/ReportsPanel';
 import { PapersPanel } from './components/PapersPanel';
 import { PipelinePanel } from './components/PipelinePanel';
-import { searchPapers, fetchPipelineRuns, BUCKET_CONFIG, type PipelineRun, type SearchResult } from './data/api';
+import { searchPapers, fetchPipelineRuns, fetchPaperStats, BUCKET_CONFIG, type PipelineRun, type SearchResult } from './data/api';
+import { usePollingEffect, getAdaptiveInterval } from './hooks/usePolling';
 
 type Page = 'dashboard' | 'reports' | 'papers' | 'pipeline';
 
@@ -95,39 +96,19 @@ export default function App() {
   const [searchNav, setSearchNav] = useState<{query: string; nonce: number}>({query: '', nonce: 0});
   const [pipelineRuns, setPipelineRuns] = useState<PipelineRun[]>([]);
   const [totalPapers, setTotalPapers] = useState(0);
-  const [runsLoaded, setRunsLoaded] = useState(false);
 
-  useEffect(() => {
-    fetchPipelineRuns(1).then(runs => {
-      setPipelineRuns(runs);
-      setRunsLoaded(true);
-    }).catch(() => setRunsLoaded(true));
-  }, []);
+  const runInterval = getAdaptiveInterval(pipelineRuns);
 
-  // Listen for custom events to refresh sidebar data
-  useEffect(() => {
-    const refresh = () => {
-      fetchPipelineRuns(1).then(setPipelineRuns).catch(() => {});
-    };
-    window.addEventListener('pipeline-refresh', refresh);
-    window.addEventListener('papers-refresh', () => {
-      // Re-fetch is handled by individual panels
-    });
-    return () => { window.removeEventListener('pipeline-refresh', refresh); };
-  }, []);
+  usePollingEffect(async () => {
+    const [runs, stats] = await Promise.all([
+      fetchPipelineRuns(1).catch(() => [] as PipelineRun[]),
+      fetchPaperStats().catch(() => null),
+    ]);
+    setPipelineRuns(runs);
+    if (stats) setTotalPapers(stats.total);
+  }, runInterval);
 
   const lastRun = pipelineRuns[0];
-  const successRuns = pipelineRuns.filter(r => r.status === 'success');
-
-  // Allow child components to update paper count
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (typeof detail === 'number') setTotalPapers(detail);
-    };
-    window.addEventListener('paper-count', handler);
-    return () => window.removeEventListener('paper-count', handler);
-  }, []);
 
   return (
     <div className="flex h-screen bg-[#F8FAFC] overflow-hidden">
@@ -254,9 +235,6 @@ export default function App() {
             </button>
             <button className="hidden relative w-8 h-8 rounded-xl border border-[#E2E8F0] flex items-center justify-center hover:bg-[#F8FAFC] transition-colors">
               <Bell size={14} className="text-[#64748B]" />
-            </button>
-            <button className="hidden w-8 h-8 rounded-xl border border-[#E2E8F0] flex items-center justify-center hover:bg-[#F8FAFC] transition-colors">
-              <Settings size={14} className="text-[#64748B]" />
             </button>
           </div>
         </header>

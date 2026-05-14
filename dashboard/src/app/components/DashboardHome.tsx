@@ -4,7 +4,7 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell,
 } from 'recharts';
 import {
-  Brain, Bot, TrendingUp, Database, FileText, Activity,
+  Database, FileText, Activity,
   CheckCircle, XCircle, Clock, ArrowUpRight, Zap, RefreshCw,
   AlertCircle,
 } from 'lucide-react';
@@ -12,6 +12,7 @@ import {
   fetchPapers, fetchPaperStats, fetchPipelineRuns, fetchReports,
   BUCKET_CONFIG, type BucketKey, type PipelineRun, type PaperStats,
 } from '../data/api';
+import { usePollingEffect, getAdaptiveInterval } from '../hooks/usePolling';
 
 function Icon3D({ children, gradientFrom, gradientTo, shadowColor }: {
   children: React.ReactNode; gradientFrom: string; gradientTo: string; shadowColor: string;
@@ -116,16 +117,24 @@ export function DashboardHome({ onPapersLoaded }: DashboardHomeProps) {
   const [reportCount, setReportCount] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    Promise.all([fetchPaperStats(), fetchPipelineRuns(4), fetchReports()])
-      .then(([s, r, reports]) => {
-        setStats(s);
-        setRuns(r);
-        setReportCount(reports.length);
-        if (onPapersLoaded) onPapersLoaded(s.total);
-      })
-      .catch(e => setError(e.message));
-  }, []);
+  const refresh = async () => {
+    try {
+      const [s, r, reports] = await Promise.all([
+        fetchPaperStats(),
+        fetchPipelineRuns(4),
+        fetchReports(),
+      ]);
+      setStats(s);
+      setRuns(r);
+      setReportCount(reports.length);
+      if (onPapersLoaded) onPapersLoaded(s.total);
+    } catch (e: any) {
+      if (!stats) setError(e?.message ?? 'Failed to load');
+    }
+  };
+
+  useEffect(() => { refresh(); }, []);
+  usePollingEffect(refresh, getAdaptiveInterval(runs), [runs.length]);
 
   if (error) {
     return (
@@ -362,7 +371,9 @@ export function DashboardHome({ onPapersLoaded }: DashboardHomeProps) {
 
 function RecentPapersCard() {
   const [papers, setPapers] = useState<any[]>([]);
-  useEffect(() => { fetchPapers(undefined, 1, 5).then(d => setPapers(d.results)).catch(() => {}); }, []);
+  const load = () => { fetchPapers(undefined, 1, 5).then(d => setPapers(d.results)).catch(() => {}); };
+  useEffect(() => { load(); }, []);
+  usePollingEffect(load, 30000);
   return (
     <div className="bg-white rounded-2xl border border-[#E2E8F0] p-5">
       <div className="flex items-center justify-between mb-4">

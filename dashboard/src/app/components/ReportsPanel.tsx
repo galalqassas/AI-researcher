@@ -4,6 +4,7 @@ import { marked } from 'marked';
 import { FileText, Loader2, Clock, CheckCircle, ChevronRight, X, Download, Sparkles, AlertCircle, BookOpen, Layers, Globe, Brain, Bot, TrendingUp } from 'lucide-react';
 import pdfIcon from '../../assets/pdfIcon.svg';
 import { fetchReports, fetchReport, generateReport, type Report } from '../data/api';
+import { usePollingEffect } from '../hooks/usePolling';
 
 // Configure marked for inline-safe rendering
 marked.setOptions({ breaks: true, gfm: true });
@@ -462,9 +463,10 @@ export function ReportsPanel() {
   const [loading, setLoading] = useState(true);
   const [generatingError, setGeneratingError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchReports().then(setReports).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+  const refresh = () => { fetchReports().then(setReports).catch(() => {}).finally(() => setLoading(false)); };
+
+  useEffect(() => { refresh(); }, []);
+  usePollingEffect(refresh, 30000);
 
   async function handleGenerate(period: string) {
     setGenerating(period);

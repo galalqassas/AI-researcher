@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { Search, ExternalLink, ChevronDown, ChevronUp, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { fetchPapers, BUCKET_CONFIG, type BucketKey, type Paper } from '../data/api';
+import { usePollingEffect } from '../hooks/usePolling';
 
 const ALL_BUCKET_KEYS = Object.keys(BUCKET_CONFIG) as BucketKey[];
 const PAGE_SIZES = [10, 20, 50] as const;
@@ -102,7 +103,7 @@ export function PapersPanel({ onPapersLoaded, initialQuery }: { onPapersLoaded?:
         cbRef.current?.(data.total);
       })
       .catch(e => { if (!cancelled) setError(String(e?.message ?? e)); })
-      .finally(() => { 
+      .finally(() => {
         if (!cancelled) {
           setFetching(false);
           setInitialLoad(false);
@@ -110,6 +111,15 @@ export function PapersPanel({ onPapersLoaded, initialQuery }: { onPapersLoaded?:
       });
     return () => { cancelled = true; };
   }, [bucket, page, pageSize, serverSearch]);
+
+  usePollingEffect(() => {
+    fetchPapers(bucket === 'all' ? undefined : bucket, page, pageSize, serverSearch || undefined)
+      .then(data => {
+        setPapers(data.results);
+        setTotal(data.total);
+        cbRef.current?.(data.total);
+      }).catch(() => {});
+  }, 30000, [bucket, page, pageSize, serverSearch]);
 
   useEffect(() => {
     const timer = setTimeout(() => {

@@ -7,6 +7,7 @@ import {
   Database, AlertTriangle, Loader2,
 } from 'lucide-react';
 import { fetchPipelineRuns, runPipeline, type PipelineRun } from '../data/api';
+import { usePollingEffect, getAdaptiveInterval } from '../hooks/usePolling';
 
 function fmtDuration(s: number | null) {
   if (s == null) return '—';
@@ -97,11 +98,15 @@ export function PipelinePanel() {
   const [running, setRunning] = useState(false);
 
   const refresh = () => {
-    setLoading(true);
     fetchPipelineRuns(20).then(setRuns).catch(e => setError(e.message)).finally(() => setLoading(false));
   };
 
+  const silentRefresh = () => {
+    fetchPipelineRuns(20).then(setRuns).catch(() => {});
+  };
+
   useEffect(() => { refresh(); }, []);
+  usePollingEffect(silentRefresh, getAdaptiveInterval(runs), [runs.length]);
 
   const handleRunPipeline = async () => {
     setRunning(true);
