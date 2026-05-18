@@ -38,6 +38,13 @@ Thumbs.db
 opencode.jsonc
 opencode.json
 
+# Impeccable skill
+.impeccable/
+
+# Scratch files
+PRODUCT.md
+todo.md
+
 # Dashboard frontend (React/Vite)
 dashboard/node_modules/
 dashboard/dist/
