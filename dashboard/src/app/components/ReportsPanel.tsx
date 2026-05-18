@@ -463,7 +463,7 @@ export function ReportsPanel() {
   const [loading, setLoading] = useState(true);
   const [generatingError, setGeneratingError] = useState<string | null>(null);
 
-  const refresh = () => { fetchReports().then(setReports).catch(() => {}).finally(() => setLoading(false)); };
+  const refresh = () => { fetchReports().then(res => setReports(res.data)).catch(() => {}).finally(() => setLoading(false)); };
 
   useEffect(() => { refresh(); }, []);
   usePollingEffect(refresh, 30000);
@@ -476,9 +476,9 @@ export function ReportsPanel() {
     try {
       const result = await generateReport(period);
       const updated = await fetchReports();
-      setReports(updated);
+      setReports(updated.data);
       const fullReport = await fetchReport(result.id);
-      setViewingReport(fullReport);
+      setViewingReport(fullReport.data);
     } catch (e: any) {
       setGeneratingError(e.message || 'Generation failed');
     } finally {
@@ -493,7 +493,7 @@ export function ReportsPanel() {
     if (!report.content_html) {
       try {
         const full = await fetchReport(report.id);
-        setViewingReport(full);
+        setViewingReport(full.data);
       } catch { setViewingReport(report); }
     } else {
       setViewingReport(report);

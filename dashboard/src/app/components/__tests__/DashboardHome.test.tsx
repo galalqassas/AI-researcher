@@ -25,21 +25,30 @@ describe('DashboardHome', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(fetchPaperStats).mockResolvedValue({
-      total: 10, today: 2,
-      per_bucket: { general_ai: 5, autonomous_agents: 3, ai_finance: 2 },
-      per_date: [{ date: '2025-05', count: 2, general_ai: 1, autonomous_agents: 1, ai_finance: 0 }],
+      data: {
+        total: 10, today: 2,
+        per_bucket: { general_ai: 5, autonomous_agents: 3, ai_finance: 2 },
+        per_date: [{ date: '2025-05', count: 2, general_ai: 1, autonomous_agents: 1, ai_finance: 0 }],
+      },
+      fromCache: false,
     })
-    vi.mocked(fetchPipelineRuns).mockResolvedValue([{
-      id: 1, name: 'full_pipeline', started_at: '2025-05-12T18:30:00',
-      finished_at: '2025-05-12T18:35:22', duration_s: 322.45,
-      status: 'success', paper_count: 6,
-      stages: { ingested: 6, deduplicated: 0, embedded: 6, classified: 6 },
-      error: null,
-    }])
-    vi.mocked(fetchReports).mockResolvedValue([
-      { id: 1, period: '7d', generated_at: '2025-05-12T19:00:00', paper_count: 8, content_html: '' },
-    ])
-    vi.mocked(fetchPapers).mockResolvedValue({ total: 1, results: [] })
+    vi.mocked(fetchPipelineRuns).mockResolvedValue({
+      data: [{
+        id: 1, name: 'full_pipeline', started_at: '2025-05-12T18:30:00',
+        finished_at: '2025-05-12T18:35:22', duration_s: 322.45,
+        status: 'success', paper_count: 6,
+        stages: { ingested: 6, deduplicated: 0, embedded: 6, classified: 6 },
+        error: null,
+      }],
+      fromCache: false,
+    })
+    vi.mocked(fetchReports).mockResolvedValue({
+      data: [
+        { id: 1, period: '7d', generated_at: '2025-05-12T19:00:00', paper_count: 8, content_html: '' },
+      ],
+      fromCache: false,
+    })
+    vi.mocked(fetchPapers).mockResolvedValue({ data: { total: 1, results: [] }, fromCache: false })
   })
 
   it('renders stat cards from fetchPaperStats', async () => {
@@ -59,17 +68,20 @@ describe('DashboardHome', () => {
   })
 
   it('displays pipeline runs with status and duration', async () => {
-    vi.mocked(fetchPipelineRuns).mockResolvedValue([
-      { id: 1, name: 'full_pipeline', started_at: '2025-05-12T18:30:00',
-        finished_at: '2025-05-12T18:35:22', duration_s: 322.45,
-        status: 'success', paper_count: 6,
-        stages: { ingested: 6, deduplicated: 0, embedded: 6, classified: 6 },
-        error: null },
-      { id: 2, name: 'ingest', started_at: '2025-05-10T14:15:00',
-        finished_at: '2025-05-10T14:18:07', duration_s: 187.2,
-        status: 'error', paper_count: 0,
-        stages: { ingested: 0 }, error: 'timeout' },
-    ])
+    vi.mocked(fetchPipelineRuns).mockResolvedValue({
+      data: [
+        { id: 1, name: 'full_pipeline', started_at: '2025-05-12T18:30:00',
+          finished_at: '2025-05-12T18:35:22', duration_s: 322.45,
+          status: 'success', paper_count: 6,
+          stages: { ingested: 6, deduplicated: 0, embedded: 6, classified: 6 },
+          error: null },
+        { id: 2, name: 'ingest', started_at: '2025-05-10T14:15:00',
+          finished_at: '2025-05-10T14:18:07', duration_s: 187.2,
+          status: 'error', paper_count: 0,
+          stages: { ingested: 0 }, error: 'timeout' },
+      ],
+      fromCache: false,
+    })
 
     render(<DashboardHome />)
     await waitFor(() => {
@@ -79,10 +91,13 @@ describe('DashboardHome', () => {
   })
 
   it('shows report count', async () => {
-    vi.mocked(fetchReports).mockResolvedValue([
-      { id: 1, period: '7d', generated_at: '2025-05-12T19:00:00', paper_count: 8, content_html: '' },
-      { id: 2, period: '1m', generated_at: '2025-05-01T10:00:00', paper_count: 6, content_html: '' },
-    ])
+    vi.mocked(fetchReports).mockResolvedValue({
+      data: [
+        { id: 1, period: '7d', generated_at: '2025-05-12T19:00:00', paper_count: 8, content_html: '' },
+        { id: 2, period: '1m', generated_at: '2025-05-01T10:00:00', paper_count: 6, content_html: '' },
+      ],
+      fromCache: false,
+    })
     render(<DashboardHome />)
     await waitFor(() => {
       expect(screen.getByText('Reports')).toBeInTheDocument()

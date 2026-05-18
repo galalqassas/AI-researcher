@@ -18,17 +18,20 @@ import { fetchPipelineRuns, runPipeline } from '../../data/api'
 describe('PipelinePanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(fetchPipelineRuns).mockResolvedValue([
-      { id: 1, name: 'full_pipeline', started_at: '2025-05-12T18:30:00',
-        finished_at: '2025-05-12T18:35:00', duration_s: 300, status: 'success',
-        paper_count: 5, stages: { ingested: 5, deduplicated: 0, embedded: 5, classified: 5 }, error: null },
-      { id: 2, name: 'ingest', started_at: '2025-05-10T14:15:00',
-        finished_at: '2025-05-10T14:18:00', duration_s: 45, status: 'error',
-        paper_count: 0, stages: { ingested: 0 }, error: 'timeout' },
-      { id: 3, name: 'report', started_at: '2025-05-08T09:00:00',
-        finished_at: '2025-05-08T09:02:00', duration_s: 150, status: 'success',
-        paper_count: 3, stages: null, error: null },
-    ] as any)
+    vi.mocked(fetchPipelineRuns).mockResolvedValue({
+      data: [
+        { id: 1, name: 'full_pipeline', started_at: '2025-05-12T18:30:00',
+          finished_at: '2025-05-12T18:35:00', duration_s: 300, status: 'success',
+          paper_count: 5, stages: { ingested: 5, deduplicated: 0, embedded: 5, classified: 5 }, error: null },
+        { id: 2, name: 'ingest', started_at: '2025-05-10T14:15:00',
+          finished_at: '2025-05-10T14:18:00', duration_s: 45, status: 'error',
+          paper_count: 0, stages: { ingested: 0 }, error: 'timeout' },
+        { id: 3, name: 'report', started_at: '2025-05-08T09:00:00',
+          finished_at: '2025-05-08T09:02:00', duration_s: 150, status: 'success',
+          paper_count: 3, stages: null, error: null },
+      ] as any,
+      fromCache: false,
+    })
     vi.mocked(runPipeline).mockResolvedValue({ status: 'ok', paper_count: 2, stages: { ingested: 2 } } as any)
   })
 
@@ -75,11 +78,14 @@ describe('PipelinePanel', () => {
   })
 
   it('expandable run shows stage breakdown', async () => {
-    vi.mocked(fetchPipelineRuns).mockResolvedValue([
-      { id: 1, name: 'ingest', started_at: '2025-05-12T18:30:00',
-        finished_at: '2025-05-12T18:35:00', duration_s: 300, status: 'success',
-        paper_count: 5, stages: { ingested: 5, deduplicated: 1, embedded: 5, classified: 5 }, error: null },
-    ] as any)
+    vi.mocked(fetchPipelineRuns).mockResolvedValue({
+      data: [
+        { id: 1, name: 'ingest', started_at: '2025-05-12T18:30:00',
+          finished_at: '2025-05-12T18:35:00', duration_s: 300, status: 'success',
+          paper_count: 5, stages: { ingested: 5, deduplicated: 1, embedded: 5, classified: 5 }, error: null },
+      ] as any,
+      fromCache: false,
+    })
 
     render(<PipelinePanel />)
     const user = userEvent.setup()
@@ -96,11 +102,14 @@ describe('PipelinePanel', () => {
   })
 
   it('shows error message for failed runs', async () => {
-    vi.mocked(fetchPipelineRuns).mockResolvedValue([
-      { id: 1, name: 'ingest', started_at: '2025-05-12T18:30:00',
-        finished_at: '2025-05-12T18:30:45', duration_s: 45, status: 'error',
-        paper_count: 0, stages: { ingested: 0 }, error: 'Ollama connection timeout' },
-    ] as any)
+    vi.mocked(fetchPipelineRuns).mockResolvedValue({
+      data: [
+        { id: 1, name: 'ingest', started_at: '2025-05-12T18:30:00',
+          finished_at: '2025-05-12T18:30:45', duration_s: 45, status: 'error',
+          paper_count: 0, stages: { ingested: 0 }, error: 'Ollama connection timeout' },
+      ] as any,
+      fromCache: false,
+    })
 
     render(<PipelinePanel />)
     // Use exact match to get the run-name text (not "ingested across all runs" stat card)

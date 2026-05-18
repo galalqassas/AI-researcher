@@ -23,12 +23,15 @@ import { fetchReports, fetchReport, generateReport } from '../../data/api'
 describe('ReportsPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(fetchReports).mockResolvedValue([
-      { id: 1, period: '7d', generated_at: '2025-05-12T19:00:00', paper_count: 8, content_html: '' },
-      { id: 2, period: '1m', generated_at: '2025-05-01T10:00:00', paper_count: 6, content_html: '' },
-    ] as any)
+    vi.mocked(fetchReports).mockResolvedValue({
+      data: [
+        { id: 1, period: '7d', generated_at: '2025-05-12T19:00:00', paper_count: 8, content_html: '' },
+        { id: 2, period: '1m', generated_at: '2025-05-01T10:00:00', paper_count: 6, content_html: '' },
+      ] as any,
+      fromCache: false,
+    })
     vi.mocked(generateReport).mockResolvedValue({ id: 3, period: '7d', paper_count: 5 } as any)
-    vi.mocked(fetchReport).mockResolvedValue({ id: 1, period: '7d', generated_at: '2025-05-12T19:00:00', paper_count: 8, content_html: '<h1>Test Report</h1>' } as any)
+    vi.mocked(fetchReport).mockResolvedValue({ data: { id: 1, period: '7d', generated_at: '2025-05-12T19:00:00', paper_count: 8, content_html: '<h1>Test Report</h1>' }, fromCache: false } as any)
   })
 
   it('renders period selector cards', () => {

@@ -98,11 +98,16 @@ export function PipelinePanel() {
   const [running, setRunning] = useState(false);
 
   const refresh = () => {
-    fetchPipelineRuns(20).then(setRuns).catch(e => setError(e.message)).finally(() => setLoading(false));
+    fetchPipelineRuns(20)
+      .then(res => { setRuns(res.data); setError(null); })
+      .catch(e => { if (runs.length === 0) setError(String(e?.message ?? e)); })
+      .finally(() => setLoading(false));
   };
 
   const silentRefresh = () => {
-    fetchPipelineRuns(20).then(data => { setRuns(data); setError(null); }).catch(() => {});
+    fetchPipelineRuns(20)
+      .then(res => { setRuns(res.data); setError(null); })
+      .catch(() => {});
   };
 
   useEffect(() => { refresh(); }, []);

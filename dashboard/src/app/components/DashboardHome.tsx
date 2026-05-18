@@ -120,10 +120,13 @@ export function DashboardHome() {
         fetchPipelineRuns(4),
         fetchReports(),
       ]);
-      setStats(s);
-      setRuns(r);
-      setReportCount(reports.length);
+      setStats(s.data);
+      setRuns(r.data);
+      setReportCount(reports.data.length);
+      setError(null); // clear any previous error on success
     } catch (e: any) {
+      // If we already have data from a previous successful fetch or from cache,
+      // keep showing it.  Only set the error banner when there's nothing to show.
       if (!stats) setError(e?.message ?? 'Failed to load');
     }
   };
@@ -131,7 +134,8 @@ export function DashboardHome() {
   useEffect(() => { refresh(); }, []);
   usePollingEffect(refresh, getAdaptiveInterval(runs), [runs.length]);
 
-  if (error) {
+  // Only show the hard error when we have NO data at all (no fresh, no cached)
+  if (error && !stats) {
     return (
       <div className="p-6">
         <div className="flex items-start gap-3 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3">
@@ -366,7 +370,7 @@ export function DashboardHome() {
 
 function RecentPapersCard() {
   const [papers, setPapers] = useState<any[]>([]);
-  const load = () => { fetchPapers(undefined, 1, 5).then(d => setPapers(d.results)).catch(() => {}); };
+  const load = () => { fetchPapers(undefined, 1, 5).then(d => setPapers(d.data.results)).catch(() => {}); };
   useEffect(() => { load(); }, []);
   usePollingEffect(load, 30000);
   return (

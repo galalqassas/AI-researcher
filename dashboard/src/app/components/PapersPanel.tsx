@@ -96,13 +96,16 @@ export function PapersPanel({ onPapersLoaded, initialQuery }: { onPapersLoaded?:
     setFetching(true);
     setError(null);
     fetchPapers(bucket === 'all' ? undefined : bucket, page, pageSize, serverSearch || undefined)
-      .then(data => {
+      .then(res => {
         if (cancelled) return;
-        setPapers(data.results);
-        setTotal(data.total);
-        cbRef.current?.(data.total);
+        setPapers(res.data.results);
+        setTotal(res.data.total);
+        cbRef.current?.(res.data.total);
       })
-      .catch(e => { if (!cancelled) setError(String(e?.message ?? e)); })
+      .catch(e => {
+        // Only show error if we have no data to display
+        if (!cancelled && papers.length === 0) setError(String(e?.message ?? e));
+      })
       .finally(() => {
         if (!cancelled) {
           setFetching(false);
@@ -114,10 +117,11 @@ export function PapersPanel({ onPapersLoaded, initialQuery }: { onPapersLoaded?:
 
   usePollingEffect(() => {
     fetchPapers(bucket === 'all' ? undefined : bucket, page, pageSize, serverSearch || undefined)
-      .then(data => {
-        setPapers(data.results);
-        setTotal(data.total);
-        cbRef.current?.(data.total);
+      .then(res => {
+        setPapers(res.data.results);
+        setTotal(res.data.total);
+        cbRef.current?.(res.data.total);
+        setError(null); // clear stale error on successful poll
       }).catch(() => {});
   }, 30000, [bucket, page, pageSize, serverSearch]);
 

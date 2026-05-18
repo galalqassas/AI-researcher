@@ -39,19 +39,25 @@ import { fetchPipelineRuns, fetchPaperStats, searchPapers } from '../../data/api
 describe('App', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(fetchPipelineRuns).mockResolvedValue([{
-      id: 1, name: 'ingest', started_at: '2025-05-12T18:30:00',
-      finished_at: '2025-05-12T18:35:00', duration_s: 300,
-      status: 'success', paper_count: 5,
-      stages: { ingested: 5, deduplicated: 0, embedded: 5, classified: 5 },
-      error: null,
-    }] as any)
+    vi.mocked(fetchPipelineRuns).mockResolvedValue({
+      data: [{
+        id: 1, name: 'ingest', started_at: '2025-05-12T18:30:00',
+        finished_at: '2025-05-12T18:35:00', duration_s: 300,
+        status: 'success', paper_count: 5,
+        stages: { ingested: 5, deduplicated: 0, embedded: 5, classified: 5 },
+        error: null,
+      }] as any,
+      fromCache: false,
+    })
     vi.mocked(fetchPaperStats).mockResolvedValue({
-      total: 42, today: 2,
-      per_bucket: { general_ai: 20, autonomous_agents: 12, ai_finance: 10 },
-      per_date: [{ date: '2025-05', count: 2, general_ai: 1, autonomous_agents: 1, ai_finance: 0 }],
-    } as any)
-    vi.mocked(searchPapers).mockResolvedValue({ query: '', results: [] } as any)
+      data: {
+        total: 42, today: 2,
+        per_bucket: { general_ai: 20, autonomous_agents: 12, ai_finance: 10 },
+        per_date: [{ date: '2025-05', count: 2, general_ai: 1, autonomous_agents: 1, ai_finance: 0 }],
+      } as any,
+      fromCache: false,
+    })
+    vi.mocked(searchPapers).mockResolvedValue({ data: { query: '', results: [] }, fromCache: false } as any)
   })
 
   it('renders sidebar nav and defaults to dashboard', async () => {

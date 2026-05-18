@@ -27,7 +27,7 @@ describe('PapersPanel', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(fetchPapers).mockResolvedValue({ total: 3, results: papers as any })
+    vi.mocked(fetchPapers).mockResolvedValue({ data: { total: 3, results: papers as any }, fromCache: false })
   })
 
   it('renders paper cards with titles', async () => {
@@ -53,7 +53,7 @@ describe('PapersPanel', () => {
   })
 
   it('pagination exists when total exceeds page size', async () => {
-    vi.mocked(fetchPapers).mockResolvedValue({ total: 25, results: papers.slice(0, 3) as any })
+    vi.mocked(fetchPapers).mockResolvedValue({ data: { total: 25, results: papers.slice(0, 3) as any }, fromCache: false })
     render(<PapersPanel />)
     await waitFor(() => screen.getByText('Alpha'))
 
