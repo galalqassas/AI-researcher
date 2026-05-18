@@ -32,7 +32,7 @@ function SearchPapersInline({ onClose, onNavigate }: { onClose: () => void; onNa
       setLoading(true);
       try {
         const data = await searchPapers(query, 6);
-        setResults(data.data.results);
+        setResults(data.results);
       } catch { setResults([]); }
       finally { setLoading(false); }
     }, 300);
@@ -98,17 +98,16 @@ export default function App() {
   const [searchNav, setSearchNav] = useState<{query: string; nonce: number}>({query: '', nonce: 0});
   const [pipelineRuns, setPipelineRuns] = useState<PipelineRun[]>([]);
   const [totalPapers, setTotalPapers] = useState(0);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const runInterval = getAdaptiveInterval(pipelineRuns);
 
   const loadSidebarData = async () => {
-    const [runsResult, statsResult] = await Promise.all([
-      fetchPipelineRuns(1).catch(() => ({ data: [] as PipelineRun[], fromCache: false })),
-      fetchPaperStats().catch(() => ({ data: null as any, fromCache: false })),
+    const [runs, stats] = await Promise.all([
+      fetchPipelineRuns(1).catch(() => [] as PipelineRun[]),
+      fetchPaperStats().catch(() => null),
     ]);
-    setPipelineRuns(runsResult.data);
-    if (statsResult.data) setTotalPapers(statsResult.data.total);
+    setPipelineRuns(runs);
+    if (stats) setTotalPapers(stats.total);
   };
 
   useEffect(() => { loadSidebarData(); }, []);
@@ -119,10 +118,7 @@ export default function App() {
   return (
     <div className="flex h-screen bg-[#F8FAFC] overflow-hidden">
       {/* Sidebar */}
-      <aside
-        className="flex-shrink-0 bg-white border-r border-[#E2E8F0] flex flex-col h-full"
-        style={{ width: sidebarCollapsed ? '64px' : '240px', transition: 'width 0.2s ease-out' }}
-      >
+      <aside className="w-60 flex-shrink-0 bg-white border-r border-[#E2E8F0] flex flex-col h-full">
         {/* Logo */}
         <div className="px-5 py-5 border-b border-[#F1F5F9]">
           <div className="flex items-center gap-3">
@@ -135,17 +131,15 @@ export default function App() {
             >
               <Brain size={18} color="white" />
             </div>
-            {!sidebarCollapsed && (
-              <div>
-                <p className="text-[#0F172A] text-sm" style={{ fontWeight: 700 }}>Auto-Researcher</p>
-                <p className="text-[#94A3B8]" style={{ fontSize: '0.7rem' }}>arXiv Intelligence MVP</p>
-              </div>
-            )}
+            <div>
+              <p className="text-[#0F172A] text-sm" style={{ fontWeight: 700 }}>Auto-Researcher</p>
+              <p className="text-[#94A3B8]" style={{ fontSize: '0.7rem' }}>arXiv Intelligence MVP</p>
+            </div>
           </div>
         </div>
 
         {/* Search shortcut */}
-        <div className="px-3 pt-4 pb-2" style={{ display: sidebarCollapsed ? 'none' : 'block' }}>
+        <div className="px-3 pt-4 pb-2">
           <button
             onClick={() => setSearchOpen(true)}
             className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] hover:bg-[#F1F5F9] transition-colors text-left"
@@ -157,83 +151,51 @@ export default function App() {
         </div>
 
         {/* Navigation */}
-        <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 0, padding: '12px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', padding: '0 4px 8px' }}>
-            <button
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              style={{
-                width: 28, height: 28, borderRadius: 8,
-                border: '1px solid #E2E8F0', background: 'white',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', transition: 'all 0.15s ease-out', color: '#94A3B8',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = '#F8FAFC'; e.currentTarget.style.borderColor = '#CBD5E1'; e.currentTarget.style.color = '#64748B'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.borderColor = '#E2E8F0'; e.currentTarget.style.color = '#94A3B8'; }}
-              title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: sidebarCollapsed ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s ease-out' }}><polyline points="15 18 9 12 15 6" /></svg>
-            </button>
-          </div>
-          {NAV.slice(0, 2).map(({ key, label, icon: Icon }) => {
+        <nav className="flex-1 px-3 py-2 space-y-0.5">
+          <p className="px-2 pb-1 pt-2 text-[#94A3B8]" style={{ fontSize: '0.68rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+            Navigation
+          </p>
+          {NAV.map(({ key, label, icon: Icon }) => {
             const active = page === key;
             return (
               <button
                 key={key}
                 onClick={() => {
                   setPage(key);
-                  if (key === 'papers') setSearchNav(prev => ({ query: '', nonce: prev.nonce + 1 }));
+                  if (key === 'papers') {
+                    setSearchNav(prev => ({query: '', nonce: prev.nonce + 1}));
+                  }
                 }}
-                className="sidebar-nav-item"
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-left group"
                 style={{
-                  width: '100%', display: 'flex', alignItems: 'center',
-                  gap: sidebarCollapsed ? 0 : 12,
-                  padding: sidebarCollapsed ? '10px' : '9px 12px',
-                  borderRadius: 10, border: 'none', background: active ? '#030213' : 'transparent',
-                  color: active ? 'white' : '#64748B', cursor: 'pointer',
-                  transition: 'all 0.15s ease-out', textAlign: 'left',
-                  fontSize: 13.5, fontWeight: active ? 500 : 400,
-                  justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
+                  background: active ? 'linear-gradient(135deg, #EEF2FF, #F5F3FF)' : 'transparent',
+                  color: active ? '#6366F1' : '#64748B',
                 }}
-                onMouseEnter={e => { if (!active) e.currentTarget.style.background = '#F8FAFC'; }}
-                onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
               >
-                <div style={{ width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <div
+                  className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-all"
+                  style={{
+                    background: active ? 'linear-gradient(145deg, #818CF8, #6366F1)' : 'transparent',
+                    boxShadow: active ? '0 3px 8px #6366F130' : 'none',
+                  }}
+                >
                   <Icon size={14} color={active ? 'white' : '#94A3B8'} />
                 </div>
-                {!sidebarCollapsed && <span className="nav-label" style={{ whiteSpace: 'nowrap', overflow: 'hidden' }}>{label}</span>}
-              </button>
-            );
-          })}
-          {!sidebarCollapsed && <div style={{ height: 1, background: '#F1F5F9', margin: '6px 8px' }} />}
-          {NAV.slice(2).map(({ key, label, icon: Icon }) => {
-            const active = page === key;
-            return (
-              <button
-                key={key}
-                onClick={() => {
-                  setPage(key);
-                  if (key === 'papers') setSearchNav(prev => ({ query: '', nonce: prev.nonce + 1 }));
-                }}
-                className="sidebar-nav-item"
-                style={{
-                  width: '100%', display: 'flex', alignItems: 'center',
-                  gap: sidebarCollapsed ? 0 : 12,
-                  padding: sidebarCollapsed ? '10px' : '9px 12px',
-                  borderRadius: 10, border: 'none', background: active ? '#030213' : 'transparent',
-                  color: active ? 'white' : '#64748B', cursor: 'pointer',
-                  transition: 'all 0.15s ease-out', textAlign: 'left',
-                  fontSize: 13.5, fontWeight: active ? 500 : 400,
-                  justifyContent: sidebarCollapsed ? 'center' : 'flex-start',
-                }}
-                onMouseEnter={e => { if (!active) e.currentTarget.style.background = '#F8FAFC'; }}
-                onMouseLeave={e => { if (!active) e.currentTarget.style.background = 'transparent'; }}
-              >
-                <div style={{ width: 28, height: 28, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <Icon size={14} color={active ? 'white' : '#94A3B8'} />
-                </div>
-                {!sidebarCollapsed && <span className="nav-label" style={{ whiteSpace: 'nowrap', overflow: 'hidden' }}>{label}</span>}
-                {!sidebarCollapsed && key === 'papers' && totalPapers > 0 && (
-                  <span style={{ marginLeft: 'auto', fontSize: 11, padding: '2px 7px', borderRadius: 5, fontWeight: 600, background: active ? 'rgba(255,255,255,0.2)' : '#F1F5F9', color: active ? 'rgba(255,255,255,0.9)' : '#94A3B8' }}>
+                <span
+                  className="text-sm transition-colors"
+                  style={{ fontWeight: active ? 600 : 400, color: active ? '#6366F1' : '#64748B' }}
+                >
+                  {label}
+                </span>
+                {key === 'papers' && totalPapers > 0 && (
+                  <span
+                    className="ml-auto text-xs px-1.5 py-0.5 rounded-md"
+                    style={{
+                      background: active ? '#6366F120' : '#F1F5F9',
+                      color: active ? '#6366F1' : '#94A3B8',
+                      fontWeight: 600,
+                    }}
+                  >
                     {totalPapers}
                   </span>
                 )}
@@ -241,7 +203,6 @@ export default function App() {
             );
           })}
         </nav>
-        
 
         {/* System status (Hidden per request) */}
         {/* <div className="px-3 py-4 border-t border-[#F1F5F9]"> ... </div> */}
