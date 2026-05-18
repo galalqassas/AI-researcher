@@ -32,7 +32,7 @@ function SearchPapersInline({ onClose, onNavigate }: { onClose: () => void; onNa
       setLoading(true);
       try {
         const data = await searchPapers(query, 6);
-        setResults(data.results);
+        setResults(data.data.results);
       } catch { setResults([]); }
       finally { setLoading(false); }
     }, 300);
@@ -102,12 +102,12 @@ export default function App() {
   const runInterval = getAdaptiveInterval(pipelineRuns);
 
   const loadSidebarData = async () => {
-    const [runs, stats] = await Promise.all([
-      fetchPipelineRuns(1).catch(() => [] as PipelineRun[]),
-      fetchPaperStats().catch(() => null),
+    const [runsResult, statsResult] = await Promise.all([
+      fetchPipelineRuns(1).catch(() => ({ data: [] as PipelineRun[], fromCache: false })),
+      fetchPaperStats().catch(() => ({ data: null as any, fromCache: false })),
     ]);
-    setPipelineRuns(runs);
-    if (stats) setTotalPapers(stats.total);
+    setPipelineRuns(runsResult.data);
+    if (statsResult.data) setTotalPapers(statsResult.data.total);
   };
 
   useEffect(() => { loadSidebarData(); }, []);
